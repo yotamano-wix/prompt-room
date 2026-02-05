@@ -121,6 +121,8 @@ def main():
         
     except requests.exceptions.RequestException as e:
         print(f"❌ Request failed: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"   Response body: {e.response.text}")
     except KeyError as e:
         print(f"❌ Unexpected response format. Missing key: {e}")
         print("Full response:", llm_response)
