@@ -44,4 +44,5 @@ See [`ROADMAP.md`](./ROADMAP.md) for planned changes to implement strict USER IM
 - [Pipeline Architecture](./PIPELINE.md) - Detailed flow and data contracts
 - [Entity Documentation](./ENTITIES.md) - Deep dive into each prompt
 - [Prompt Principles](./PRINCIPLES.md) - Rules for writing/modifying prompts
+- [Testing & Versioning](./TESTING.md) - How to test and version prompts
 - [Roadmap](./ROADMAP.md) - Planned changes for Digital Twin mode

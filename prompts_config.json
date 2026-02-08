@@ -1,0 +1,75 @@
+{
+  "_comment": "Prompt IDs and configuration - safe to version in git",
+  
+  "prompts": {
+    "copier": {
+      "id": "1fea6c48-d1a6-493d-8342-9573fca4e3a5",
+      "name": "Brand Book Generator",
+      "output_key": "image_brandbook",
+      "description": "Extracts technical design DNA from reference images",
+      "params": ["reference_image_url"]
+    },
+    "curator": {
+      "id": "fe7227ec-52db-41f3-ad21-4f526869553f",
+      "name": "Typography Curator",
+      "output_key": "editor_typography_selection",
+      "description": "Selects fonts from catalogue based on Brand Book",
+      "params": [
+        "editor_user_request",
+        "editor_business_type", 
+        "editor_site_description",
+        "image_brandbook",
+        "reference_image_url"
+      ]
+    },
+    "architect": {
+      "id": "55b78beb-70b0-4774-8d6c-f298718eddc4",
+      "name": "Design Architect",
+      "output_key": "design_brief",
+      "description": "Creates global and local design briefs",
+      "params": [
+        "editor_typography_selection",
+        "editor_user_request",
+        "editor_sections",
+        "editor_photo_theme",
+        "image_brandbook",
+        "editor_business_type",
+        "editor_business_name",
+        "editor_site_description",
+        "editor_images",
+        "editor_custom_components",
+        "reference_image_url"
+      ]
+    }
+  },
+
+  "default_test_data": {
+    "reference_image_url": "https://static.wixstatic.com/media/da9c7c_4a7c36f4aa334196888ec4223e3daa83~mv2.png",
+    "editor_business_type": "Recruitment Agency",
+    "editor_business_name": "Global Talent Solutions",
+    "editor_user_request": "Create a professional and results-driven website for a recruitment agency specializing in IT and finance sectors. The design should project competence, speed, and global reach, using a clean, corporate style with dynamic imagery of diverse professionals collaborating effectively.",
+    "editor_site_description": "Create a professional and results-driven website for a recruitment agency specializing in IT and finance sectors. The design should project competence, speed, and global reach, using a clean, corporate style with dynamic imagery of diverse professionals collaborating effectively.",
+    "editor_sections": "header,hero,about,services,contact,footer",
+    "editor_photo_theme": "",
+    "editor_images": "",
+    "editor_custom_components": ""
+  },
+
+  "scenarios": {
+    "copier_only": {
+      "description": "Run just the Copier with default test image",
+      "chain": ["copier"],
+      "use_default_test_data": true
+    },
+    "user_image_flow": {
+      "description": "Test USER IMAGE mode: Copier → Curator",
+      "chain": ["copier", "curator"],
+      "use_default_test_data": true
+    },
+    "full_pipeline": {
+      "description": "Full pipeline: Copier → Curator → Architect", 
+      "chain": ["copier", "curator", "architect"],
+      "use_default_test_data": true
+    }
+  }
+}
