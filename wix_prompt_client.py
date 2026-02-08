@@ -49,7 +49,9 @@ def sync_request(api_url: str, method: str, json_data: Dict[str, Any], headers: 
 
 def get_headers(app_id: str, secret_key: str) -> Dict[str, Any]:
     """Generate authentication headers using ServerSigner."""
-    return ServerSigner(app_def_id=app_id, app_secret=secret_key).sign_app()
+    headers = ServerSigner(app_def_id=app_id, app_secret=secret_key).sign_app()
+    # Ensure all header values are strings (not bytes)
+    return {k: v.decode('utf-8') if isinstance(v, bytes) else v for k, v in headers.items()}
 
 
 def get_llm_response_to_prompt_by_text(
@@ -94,16 +96,36 @@ def main():
     }
     
     print(f"🚀 Sending request to Wix AI Gateway...")
+    print(f"   App ID: {app_id}")
     print(f"   Prompt ID: {prompt_id}")
     print(f"   Parameters: {params}")
     print()
     
+    # Debug: Show headers being generated
+    headers = get_headers(app_id, secret_key)
+    print("🔍 Debug - Headers being sent:")
+    for key, value in headers.items():
+        # Truncate long values for readability
+        display_value = value if len(str(value)) < 80 else f"{str(value)[:80]}..."
+        print(f"   {key}: {display_value}")
+    print()
+    
+    # Debug: Show request body
+    print("🔍 Debug - Request body:")
+    print(f"   {json.dumps(prompt_json, indent=2)}")
+    print()
+    
+    # Debug: Show full URL
+    full_url = f"{GENERATE_PROMPT_BY_CONTENT}/{prompt_id}"
+    print(f"🔍 Debug - Full URL: {full_url}")
+    print()
+    
     try:
-        llm_response = get_llm_response_to_prompt_by_text(
-            prompt_json=prompt_json,
-            prompt_id=prompt_id,
-            app_id=app_id,
-            secret_key=secret_key
+        llm_response = sync_request(
+            api_url=full_url,
+            method='POST',
+            json_data=prompt_json,
+            headers=headers
         )
         
         # Print the generated text
