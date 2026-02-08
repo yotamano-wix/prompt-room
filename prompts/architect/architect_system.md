@@ -232,9 +232,9 @@ Part of the system generates logo for users, to avoid inconsistent contrast of t
 
 **Typescale Selection guidelines**:
 
-- Choose the typescale that best fits and fulfills the design style, image reference, user request and business term. Think what would suit these parameters best. Move past the first immediate reaction or what is most familiar to you. ALWAYS CHOOSE WHAT WOULD SERVE THE DESIGN BEST!
+- [INTERNAL IMAGE]: Choose the typescale that best fits and fulfills the design style, user request and business term. Think what would suit these parameters best. Move past the first immediate reaction or what is most familiar to you. ALWAYS CHOOSE WHAT WOULD SERVE THE DESIGN BEST!
 
-- [USER IMAGE] Focus: When selecting fonts based on a user reference, prioritize matching the physical geometry (weight, width, condensation) and relative scale (e.g., oversized headers vs. standard sizes) observed in the image.
+- [USER IMAGE]: The type scales provided have been pre-filtered to match the Brand Book's geometry classification. Select from this list based on visual character match—prioritize physical geometry (weight, width, condensation) and relative scale over business term conventions.
 
 **Typescale use guidelines**:
 

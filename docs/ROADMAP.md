@@ -119,15 +119,15 @@ Ensure Local Briefs reference the treatment name from the Global Brief so sectio
 4. ✅ Add Geometry Classification output
 5. ✅ Add Relative Scale for headers
 
-**Phase 2: Curator Priority Flip** (Middle layer)
-1. Add mode detection check
-2. Implement priority switch for `[USER IMAGE]`
-3. Add geometric matching instructions
+**Phase 2: Curator Priority Flip** ✅ COMPLETE
+1. ✅ Add mode detection check (check for `[USER IMAGE]` in Brand Book title)
+2. ✅ Implement priority switch: Visual Geometry Match > Industry Fit
+3. ✅ Reference geometry classification from Brand Book
 
-**Phase 3: Architect Refinements** (Minimal changes - mode logic already exists)
-1. Verify hierarchy rule is clear in existing mode logic
-2. Strengthen typography section to reference Brand Book scale/geometry
-3. Ensure treatment propagation to local briefs
+**Phase 3: Architect Refinements** ✅ COMPLETE (minimal changes)
+1. ✅ Existing hierarchy rule verified - already clear
+2. ✅ Typography section refined to clarify geometry priority for [USER IMAGE]
+3. ✅ Treatment propagation already in existing §12 logic
 
 ---
 
