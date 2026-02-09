@@ -71,5 +71,14 @@
       "chain": ["copier", "curator", "architect"],
       "use_default_test_data": true
     }
+  },
+
+  "wix_preview": {
+    "origin_template_id": "91532250-8835-46ac-9666-e4db8770b275",
+    "prompt_overrides": {
+      "architectPromptId": "55b78beb-70b0-4774-8d6c-f298718eddc4",
+      "designerPromptId": "",
+      "typographyPromptId": "fe7227ec-52db-41f3-ad21-4f526869553f"
+    }
   }
 }

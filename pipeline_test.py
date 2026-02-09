@@ -12,6 +12,9 @@ Usage:
   python pipeline_test.py scenario user_image_flow      # Copier → Curator
   python pipeline_test.py scenario full_pipeline        # Copier → Curator → Architect
   
+  # Preview in Wix (runs copier, copies brand book, opens browser)
+  python pipeline_test.py preview
+  
   # Compare last two runs of a prompt
   python pipeline_test.py diff copier
   
@@ -36,9 +39,14 @@ def load_prompts_config():
     """Load prompt IDs, scenarios, and default test data from config file (versionable)"""
     with open("prompts_config.json", "r") as f:
         config = json.load(f)
-    return config["prompts"], config["scenarios"], config.get("default_test_data", {})
+    return (
+        config["prompts"], 
+        config["scenarios"], 
+        config.get("default_test_data", {}),
+        config.get("wix_preview", {})
+    )
 
-PROMPTS, SCENARIOS, DEFAULT_TEST_DATA = load_prompts_config()
+PROMPTS, SCENARIOS, DEFAULT_TEST_DATA, WIX_PREVIEW = load_prompts_config()
 
 # ============================================================================
 # API CLIENT
@@ -273,6 +281,90 @@ def list_results():
             if len(files) > 3:
                 print(f"  ... and {len(files) - 3} more")
 
+
+def build_wix_preview_url() -> str:
+    """Build the Wix preview URL with siteData and prompt overrides"""
+    from urllib.parse import quote
+    
+    # Build siteData JSON
+    site_data = {
+        "business_term": DEFAULT_TEST_DATA.get("editor_business_type", ""),
+        "site_name": DEFAULT_TEST_DATA.get("editor_business_name", ""),
+        "site_description": DEFAULT_TEST_DATA.get("editor_site_description", ""),
+        "photo_theme": DEFAULT_TEST_DATA.get("editor_photo_theme", ""),
+        "tone_of_voice": "",
+        "installed_apps": []
+    }
+    
+    site_data_json = json.dumps(site_data, separators=(',', ':'))
+    
+    # Build URL
+    base_url = "https://manage.wix.com/edit-template/from"
+    template_id = WIX_PREVIEW.get("origin_template_id", "")
+    prompt_overrides = WIX_PREVIEW.get("prompt_overrides", {})
+    
+    url = f"{base_url}?originTemplateId={template_id}"
+    url += "&aiSiteCreation=force"
+    url += f"&siteData={quote(site_data_json)}"
+    url += "&debug=true"
+    
+    # Add prompt overrides (only if non-empty)
+    for key, value in prompt_overrides.items():
+        if value:
+            url += f"&{key}={value}"
+    
+    url += "&isAiSiteCreationShown=true"
+    url += "&enableBI=true"
+    
+    return url
+
+
+def preview_in_wix():
+    """Run copier, copy brand book to clipboard, and open Wix preview"""
+    import subprocess
+    import webbrowser
+    
+    print("\n🎨 Wix Preview Mode")
+    print("=" * 50)
+    
+    # Step 1: Run the copier
+    print("\n[1/3] Running Copier to generate Brand Book...")
+    result = run_prompt("copier", use_defaults=True)
+    
+    if not result or not result.get("output"):
+        print("❌ Failed to generate brand book")
+        return
+    
+    brand_book = result["output"]
+    
+    # Step 2: Copy brand book to clipboard
+    print("\n[2/3] Copying Brand Book to clipboard...")
+    try:
+        process = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
+        process.communicate(brand_book.encode('utf-8'))
+        print("✅ Brand Book copied to clipboard!")
+    except Exception as e:
+        print(f"⚠️  Could not copy to clipboard: {e}")
+        print("    Brand book saved in test_results/ - copy manually")
+    
+    # Step 3: Build and open URL
+    print("\n[3/3] Opening Wix preview in browser...")
+    url = build_wix_preview_url()
+    
+    print(f"\n📋 URL built with:")
+    print(f"   - Business: {DEFAULT_TEST_DATA.get('editor_business_type')}")
+    print(f"   - Site Name: {DEFAULT_TEST_DATA.get('editor_business_name')}")
+    print(f"   - Architect: {WIX_PREVIEW.get('prompt_overrides', {}).get('architectPromptId', 'default')[:8]}...")
+    print(f"   - Typography: {WIX_PREVIEW.get('prompt_overrides', {}).get('typographyPromptId', 'default')[:8]}...")
+    
+    # Open in default browser
+    webbrowser.open(url)
+    
+    print("\n" + "=" * 50)
+    print("✅ Browser opened!")
+    print("\n⚠️  NEXT STEP: Paste the Brand Book (Cmd+V) into the Wix UI")
+    print("   The brand book is in your clipboard, ready to paste.")
+
 # ============================================================================
 # CLI
 # ============================================================================
@@ -303,6 +395,9 @@ def main():
     
     elif command == "list":
         list_results()
+    
+    elif command == "preview":
+        preview_in_wix()
     
     elif command == "help":
         print_help()
