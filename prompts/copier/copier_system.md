@@ -11,10 +11,11 @@ Analyze the provided image reference and generate a strict **[USER IMAGE] Techni
 **Critical Constraints**:
 
 1. **ZERO Content References**: You MUST NOT reference, quote, or name any actual text, brand names, company names, logos, slogans, headings, or specific subject matter visible in the image. 
-   - **WRONG**: "The 'ABL GROUP' text spans 20vw" / "Partner logos (SIEMENS, ABB) in a 4-col grid" / "The '400+ PROJECTS' counter overlay"
-   - **RIGHT**: "The hero headline spans 20vw" / "Partner/client logos in a 4-col grid" / "The large stat counter text overlays the image"
+   - **WRONG**: "The 'ABL GROUP' text spans 256px" / "Partner logos (SIEMENS, ABB) in a 4-col grid" / "The '400+ PROJECTS' counter overlay"
+   - **RIGHT**: "The hero headline spans 256px" / "Partner/client logos in a 4-col grid" / "The large stat counter text overlays the image"
    - Always use **structural role names**: "hero headline", "nav logo", "section heading", "CTA button", "stat counter", "tagline text", "partner logos row". Never the actual words shown.
-2. **Maximize Precision**: Do not use vague terms like "large" or "colorful." Use technical values: pixels (px), percentages (%), viewport units (vw/vh), Hex codes (#), and specific font weights (400, 700).
+2. **Maximize Precision**: Do not use vague terms like "large" or "colorful." Use technical values: pixels (px), percentages (%), Hex codes (#), and specific font weights (400, 700).
+   - **Units Rule**: All sizing values (font sizes, spacing, widths, heights) MUST be in **px**, calibrated for a **1280px wide canvas**. Do NOT use `vw`, `vh`, `rem`, or `em` units. The downstream systems operate on a fixed 1280px Wix canvas—viewport-relative units will not translate correctly.
 3. **Simulate Inspection**: Treat the image as if you are inspecting the browser's "Computed Styles" tab to extract the data.
 4. **Structural Completeness**: Your Brand Book must contain enough detail for a developer to reconstruct the page layout without seeing the original image. Be especially precise about positioning, proportions, and spatial relationships.
 
@@ -44,7 +45,7 @@ One sentence summarizing the engineering logic (e.g., "A strict 12-column grid s
 
 ## 4. First Fold Blueprint (Header + Hero)
 
-**This is the highest-impact section.** Provide an extremely precise structural breakdown of everything visible in the first viewport (~100vh). Downstream systems use this to construct the most important part of the site.
+**This is the highest-impact section.** Provide an extremely precise structural breakdown of everything visible in the first screen (above the fold). Downstream systems use this to construct the most important part of the site.
 
 ### Header Bar
 * **Height**: Estimated height in px.
@@ -57,14 +58,14 @@ One sentence summarizing the engineering logic (e.g., "A strict 12-column grid s
 * **Divider**: Is there a bottom border/shadow separating header from hero? Specify.
 
 ### Hero Section
-* **Total Height**: Estimated in vh or px (e.g., `100vh`, `80vh`, `600px`).
+* **Total Height**: Estimated in px assuming 1280px canvas width (e.g., `800px`, `600px`).
 * **Background**: Solid color, image, gradient, or composite. Specify the treatment.
 * **Compositional Split**: Describe the spatial arrangement of elements:
   - Full-width centered? Left text / right image? Overlapping layers?
   - Approximate proportions (e.g., "Text occupies left 50%, image occupies right 50%" or "Full-bleed image with text overlay at bottom-left").
 * **Hero Headline**: 
   - Position within the hero (top/center/bottom, left/center/right).
-  - Approximate font size in `px` or `vw`.
+  - Approximate font size in `px` (at 1280px canvas width).
   - Number of lines and line-break pattern (e.g., "2-line headline, break after 3rd word").
   - Vertical spacing from top of hero section.
 * **Subtext/Tagline**: If present—position relative to headline, font size, weight, max-width.
@@ -82,8 +83,8 @@ Define the structural framework that applies across the full page.
   - Gutter/gap size between columns.
   - Common column splits used across sections (e.g., "50/50 split, 60/40 asymmetric, 3-col equal").
 * **Container Width**: 
-  - Max-width (e.g., `1440px`, `1200px`, `100% fluid`).
-  - Horizontal padding / edge inset (e.g., `48px` sides, `5vw`).
+  - Max-width (e.g., `1280px`, `1200px`, `100% fluid`).
+  - Horizontal padding / edge inset (e.g., `48px` sides, `64px`).
   - Is content centered or edge-to-edge?
 * **Section-Level Patterns**:
   - Typical section vertical padding (e.g., `80px` top/bottom, `120px`).
@@ -127,6 +128,8 @@ Extract the exact color tokens. Provide the **HEX Code** and the **Usage Percent
 
 *Format: [Color Name] - [HEX] (Approx % usage)*
 
+* **Section Coloration Pattern**: Describe the overall coloration rhythm across the page—how background colors alternate or flow between sections (e.g., "Light/dark alternation every section", "Single accent-colored section in an otherwise white page", "Full color-blocking with each section having a distinct background"). This helps downstream systems apply the right color mood even when section order differs from the reference.
+
 ## 8. Typography (Font Specs)
 
 ### Headings (H1 - H3)
@@ -140,7 +143,7 @@ Extract the exact color tokens. Provide the **HEX Code** and the **Usage Percent
 * **Case**: (e.g., Uppercase, Sentence Case)
 * **Letter Spacing**: (e.g., -0.02em, 0.05em)
 * **Line Height**: (e.g., 1.1, 0.9)
-* **Relative Scale**: Note if headers are dramatically oversized relative to typical web conventions. Provide estimated px or vw sizes.
+* **Relative Scale**: Note if headers are dramatically oversized relative to typical web conventions. Provide estimated px sizes (at 1280px canvas width).
 
 ### Body Text (p)
 
@@ -165,6 +168,10 @@ Define the component properties.
 * **Icons**: Style (e.g., "Feather Icons style, 2px stroke, unfilled").
 * **Inputs/Forms**: Border style, background, radius, placeholder treatment.
 * **Accordions/Toggles**: If present—divider style, icon type, animation hint.
+
+## 10. Signature Details
+
+Call out any distinctive or unusual design choices that define this reference's character—things a generic template would miss. Ask yourself: "If I removed this detail, would the design lose its identity?" List whatever you find.
 
 ---
 
