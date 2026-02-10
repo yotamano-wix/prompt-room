@@ -29,7 +29,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 import requests
-from wix_server_signer.server_signer import ServerSigner
 
 # ============================================================================
 # CONFIGURATION
@@ -64,6 +63,7 @@ def call_prompt(prompt_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Call a prompt via the Wix AI Gateway"""
     app_id, secret_key = load_credentials()
     
+    from wix_server_signer.server_signer import ServerSigner
     headers = ServerSigner(app_def_id=app_id, app_secret=secret_key).sign_app()
     headers = {k: v.decode('utf-8') if isinstance(v, bytes) else v for k, v in headers.items()}
     
@@ -82,14 +82,19 @@ def call_prompt(prompt_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
 
 RESULTS_DIR = Path("test_results")
 
-def save_result(prompt_name: str, result: Dict[str, Any], params: Dict[str, Any]) -> Path:
-    """Save a test result with timestamp"""
-    RESULTS_DIR.mkdir(exist_ok=True)
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{prompt_name}_{timestamp}.json"
-    filepath = RESULTS_DIR / filename
-    
+def save_result(prompt_name: str, result: Dict[str, Any], params: Dict[str, Any], output_dir: Optional[Path] = None) -> Path:
+    """Save a test result with timestamp. If output_dir is set, save there as {prompt_name}_output.json."""
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        filepath = output_dir / f"{prompt_name}_output.json"
+        md_filepath = output_dir / f"{prompt_name}_output.md"
+    else:
+        RESULTS_DIR.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = RESULTS_DIR / f"{prompt_name}_{timestamp}.json"
+        md_filepath = RESULTS_DIR / f"{prompt_name}_{timestamp}.md"
+
     # Extract the generated text from the response
     generated_text = ""
     if "response" in result and "generatedContent" in result["response"]:
@@ -105,7 +110,7 @@ def save_result(prompt_name: str, result: Dict[str, Any], params: Dict[str, Any]
     
     data = {
         "prompt": prompt_name,
-        "timestamp": timestamp,
+        "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
         "params": params,
         "raw_response": result,
         "output": generated_text
@@ -114,10 +119,8 @@ def save_result(prompt_name: str, result: Dict[str, Any], params: Dict[str, Any]
     with open(filepath, "w") as f:
         json.dump(data, f, indent=2)
     
-    # Also save a .md version for easy reading
-    md_filepath = RESULTS_DIR / f"{prompt_name}_{timestamp}.md"
     with open(md_filepath, "w") as f:
-        f.write(f"# {prompt_name} - {timestamp}\n\n")
+        f.write(f"# {prompt_name} - {data['timestamp']}\n\n")
         f.write(f"## Parameters\n```json\n{json.dumps(params, indent=2)}\n```\n\n")
         f.write(f"## Output\n{generated_text}\n")
     
@@ -151,8 +154,8 @@ def get_last_n_results(prompt_name: str, n: int = 2) -> List[Dict[str, Any]]:
 # COMMANDS
 # ============================================================================
 
-def run_prompt(prompt_name: str, extra_params: Optional[Dict[str, Any]] = None, use_defaults: bool = False) -> Dict[str, Any]:
-    """Run a single prompt"""
+def run_prompt(prompt_name: str, extra_params: Optional[Dict[str, Any]] = None, use_defaults: bool = False, output_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Run a single prompt. If output_dir is set, save there (for batch runs)."""
     if prompt_name not in PROMPTS:
         print(f"❌ Unknown prompt: {prompt_name}")
         print(f"   Available: {', '.join(PROMPTS.keys())}")
@@ -160,9 +163,9 @@ def run_prompt(prompt_name: str, extra_params: Optional[Dict[str, Any]] = None, 
     
     prompt_config = PROMPTS[prompt_name]
     
-    # Build params
+    # Build params (merge defaults with extra_params when use_defaults)
     if use_defaults:
-        params = filter_params_for_prompt(prompt_name, DEFAULT_TEST_DATA)
+        params = {**filter_params_for_prompt(prompt_name, DEFAULT_TEST_DATA), **(extra_params or {})}
     else:
         params = extra_params or {}
     
@@ -172,11 +175,15 @@ def run_prompt(prompt_name: str, extra_params: Optional[Dict[str, Any]] = None, 
     
     try:
         result = call_prompt(prompt_config["id"], params)
-        filepath = save_result(prompt_name, result, params)
+        filepath = save_result(prompt_name, result, params, output_dir=output_dir)
         
         print(f"✅ Success! Saved to: {filepath}")
-        print(f"   Also saved: {filepath.with_suffix('.md')}")
+        if output_dir is None:
+            print(f"   Also saved: {filepath.with_suffix('.md')}")
         
+        if output_dir is not None:
+            with open(filepath, "r") as f:
+                return json.load(f)
         return get_latest_result(prompt_name)
     
     except Exception as e:
@@ -298,23 +305,23 @@ def build_wix_preview_url() -> str:
     
     site_data_json = json.dumps(site_data, separators=(',', ':'))
     
+    # Encode siteData: keep JSON structural characters unencoded
+    encoded_site_data = quote(site_data_json, safe='{},:[]')
+    
     # Build URL
     base_url = "https://manage.wix.com/edit-template/from"
     template_id = WIX_PREVIEW.get("origin_template_id", "")
     prompt_overrides = WIX_PREVIEW.get("prompt_overrides", {})
     
     url = f"{base_url}?originTemplateId={template_id}"
-    url += "&aiSiteCreation=force"
-    url += f"&siteData={quote(site_data_json)}"
+    url += "&aiSiteCreation=true"
+    url += f"&siteData={encoded_site_data}"
     url += "&debug=true"
     
     # Add prompt overrides (only if non-empty)
     for key, value in prompt_overrides.items():
         if value:
             url += f"&{key}={value}"
-    
-    url += "&isAiSiteCreationShown=true"
-    url += "&enableBI=true"
     
     return url
 
@@ -357,8 +364,9 @@ def preview_in_wix():
     print(f"   - Architect: {WIX_PREVIEW.get('prompt_overrides', {}).get('architectPromptId', 'default')[:8]}...")
     print(f"   - Typography: {WIX_PREVIEW.get('prompt_overrides', {}).get('typographyPromptId', 'default')[:8]}...")
     
-    # Open in default browser
-    webbrowser.open(url)
+    # Open in Chrome
+    chrome = webbrowser.get("open -a /Applications/Google\\ Chrome.app %s")
+    chrome.open(url)
     
     print("\n" + "=" * 50)
     print("✅ Browser opened!")

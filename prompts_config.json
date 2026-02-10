@@ -74,7 +74,7 @@
   },
 
   "wix_preview": {
-    "origin_template_id": "91532250-8835-46ac-9666-e4db8770b275",
+    "origin_template_id": "a7ad164b-ccf1-4783-a5b6-bcd6dd0845de",
     "prompt_overrides": {
       "architectPromptId": "55b78beb-70b0-4774-8d6c-f298718eddc4",
       "designerPromptId": "",

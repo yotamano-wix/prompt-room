@@ -1,8 +1,16 @@
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 .env
+
+# Playwright browser profile (persistent login state)
+.playwright-profile/
+.playwright-profile-batch-*/
+
+# Batch run outputs
+batch_results/
 
 # Test outputs (not versioned - prompts are versioned, not results)
 test_results/
