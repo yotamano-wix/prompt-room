@@ -60,9 +60,10 @@ def _git_update() -> tuple[bool, str]:
     pip_cmd = str(venv_pip) if venv_pip.exists() else "pip"
     lines = []
     try:
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
         pull = subprocess.run(
             ["git", "pull", "--ff-only"], cwd=str(PROJECT_ROOT),
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=60, env=env,
         )
         lines.append(pull.stdout.strip())
         if pull.returncode != 0:
@@ -301,6 +302,18 @@ def _render_running_view():
             p = st.session_state.get("run_process")
             if p is not None and p.poll() is None:
                 st.info("Batch started. Progress will appear after the first run completes.")
+            elif p is not None and p.poll() is not None:
+                exit_code = p.returncode
+                if exit_code != 0:
+                    st.error(f"Batch process exited with code {exit_code}.")
+                    try:
+                        stderr_out = p.stdout.read() if p.stdout else ""
+                        if stderr_out:
+                            st.code(stderr_out[-3000:] if len(stderr_out) > 3000 else stderr_out)
+                    except Exception:
+                        pass
+                else:
+                    st.warning("Batch process finished but wrote no progress. Check logs.")
         if res_path.exists():
             st.markdown("---")
             st.markdown("### Results")
@@ -373,11 +386,24 @@ def main():
         for w in range(concurrency):
             with cols[w]:
                 if st.button(f"Log in — Worker {w}", key=f"setup{w}"):
-                    subprocess.Popen(
-                        [sys.executable, str(PROJECT_ROOT / "batch_preview.py"), "--setup-worker", str(w)],
-                        cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    )
-                    st.info("Browser opened — log in to Wix, then close it.")
+                    log_path = PROJECT_ROOT / f".worker_{w}_setup.log"
+                    log_file = open(log_path, "w")
+                    try:
+                        subprocess.Popen(
+                            [sys.executable, str(PROJECT_ROOT / "batch_preview.py"), "--setup-worker", str(w)],
+                            cwd=str(PROJECT_ROOT), stdout=log_file, stderr=subprocess.STDOUT,
+                        )
+                        st.info("Browser opening — log in to Wix, then close it.")
+                    except Exception as e:
+                        log_file.close()
+                        st.error(f"Failed to launch worker {w}: {e}")
+        for w in range(concurrency):
+            log_path = PROJECT_ROOT / f".worker_{w}_setup.log"
+            if log_path.exists() and log_path.stat().st_size > 0:
+                log_text = log_path.read_text().strip()
+                if "error" in log_text.lower() or "traceback" in log_text.lower():
+                    with st.expander(f"Worker {w} log (has errors)", expanded=True):
+                        st.code(log_text[-2000:])
 
     # ========== 1. Requests ==========
     st.markdown("---")

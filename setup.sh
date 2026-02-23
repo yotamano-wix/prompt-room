@@ -116,7 +116,11 @@ _setup_git_updates() {
     echo "Step 6/6  Setting up git for self-updates..."
     git init -q
     git remote add origin "$REPO_URL" 2>/dev/null || true
-    git fetch -q origin 2>/dev/null || true
+    GIT_TERMINAL_PROMPT=0 git fetch -q origin 2>/dev/null || {
+      echo "          Skipped (repo not accessible). The app works fine without this."
+      echo "          Self-updates won't work until git access is set up."
+      return
+    }
     echo "          Done."
     return
   fi
@@ -150,7 +154,7 @@ if [[ "$1" == "--desktop" ]] || [[ "$1" == "-d" ]]; then
   python3 setup_desktop.py
 elif [[ -t 0 ]]; then
   read -r -p "  Create a Desktop shortcut? [y/N] " reply
-  if [[ "${reply,,}" =~ ^y ]]; then
+  if [[ "$reply" =~ ^[yY] ]]; then
     python3 setup_desktop.py
   else
     echo "  You can add it later:  python3 setup_desktop.py"

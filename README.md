@@ -12,20 +12,39 @@ Works on a **completely fresh Mac** — nothing needs to be pre-installed.
 
 ### 1. Get the project folder
 
-Copy the project to the new machine using any method:
-- AirDrop / USB drive / shared folder
-- Or download a zip
+**Option A — Clean zip (no git, no history, smallest)**  
+On a machine that already has the repo:
 
-### 2. Open Terminal and run the setup
+```bash
+cd /path/to/prompt-room
+./make_release_zip.sh
+```
 
-Open **Terminal** (search for "Terminal" in Spotlight), then:
+This creates `prompt-room-YYYYMMDD.zip`. Copy that file to the new computer (AirDrop, USB, drive), unzip it, then double-click **`setup.command`** (or run `./setup.sh` in Terminal). No `.git`, `.venv`, or batch outputs — just what’s needed to run.
+
+**Option B — Git clone (best if they have git)**  
+```bash
+git clone https://github.com/yotamano-wix/prompt-room.git
+cd prompt-room
+```
+
+**Option C — Copy the whole folder**  
+Copy the project folder via AirDrop / USB / shared drive (includes `.git` and possibly `.venv`; exclude `batch_results/` and `.playwright-profile*/` if you want it smaller).
+
+### 2. Run the setup
+
+**Easiest:** Double-click **`setup.command`** in the project folder. Terminal will open and run the setup; when it’s done, press Enter to close.
+
+**If macOS blocks it:** The first time you double-click `setup.command` (or `start.command`), macOS may say it “cannot be opened because it is from an unidentified developer.” Fix it once: **right‑click** the file → **Open** → **Open** in the dialog. After that it will run normally. Or go to **System Settings → Privacy & Security → Security** and click **Allow anyway** for the script.
+
+**Or** open Terminal, go to the project folder, and run:
 
 ```bash
 cd /path/to/prompt-room
 ./setup.sh
 ```
 
-> Replace `/path/to/prompt-room` with the actual folder path.
+> Replace `/path/to/prompt-room` with the actual folder path (e.g. the folder you unzipped).
 > Tip: type `cd ` then drag the folder into the Terminal window.
 
 The setup script **automatically installs everything**:
@@ -84,6 +103,7 @@ The app pulls the latest code and reloads automatically. No Terminal needed.
 | `batch_preview.py` | Batch runner (used when you click Run) |
 | `preview_automation.py` | Wix preview automation |
 | `setup.sh` | One-time setup (installs everything) |
+| `setup.command` | Double-click to run setup (no Terminal needed first) |
 | `start.command` | Launcher (double-click to start) |
 | `setup_desktop.py` | Creates a Desktop shortcut |
 | `requirements.txt` | Python dependencies |

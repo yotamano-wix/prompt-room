@@ -176,8 +176,8 @@ def main():
     args = parser.parse_args()
 
     if args.setup_worker is not None:
-        if args.setup_worker not in (0, 1):
-            print("--setup-worker must be 0 or 1")
+        if args.setup_worker not in range(4):
+            print("--setup-worker must be 0, 1, 2, or 3")
             sys.exit(1)
         from preview_automation import launch_browser, setup_profile
         import preview_automation
