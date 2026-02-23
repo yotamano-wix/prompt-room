@@ -55,9 +55,22 @@ WIX_URL = "http://api.42.wixprod.net/wix-ai-gateway/v1/generate-content-by-promp
 
 def load_credentials() -> tuple:
     """Load app credentials from config.json"""
-    with open("config.json", "r") as f:
+    config_path = Path("config.json")
+    if not config_path.exists():
+        raise FileNotFoundError(
+            "config.json not found. Copy config.example.json to config.json "
+            "and fill in your app_id and secret_key."
+        )
+    with open(config_path, "r") as f:
         config = json.load(f)
-    return config["app_id"], config["secret_key"]
+    app_id = config.get("app_id", "")
+    secret_key = config.get("secret_key", "")
+    if not app_id or app_id == "YOUR_APP_ID" or not secret_key or secret_key == "YOUR_SECRET_KEY":
+        raise ValueError(
+            "config.json has placeholder credentials. "
+            "Fill in your real app_id and secret_key."
+        )
+    return app_id, secret_key
 
 def call_prompt(prompt_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Call a prompt via the Wix AI Gateway"""

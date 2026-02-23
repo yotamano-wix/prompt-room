@@ -62,16 +62,15 @@ At the end it asks if you want a **Desktop shortcut** (recommended).
 
 ### 3. Add your Wix credentials
 
-Create a file called `config.json` in the project folder:
+Copy the example file and fill in your real keys:
 
-```json
-{
-  "app_id": "your-app-id",
-  "secret_key": "your-secret-key"
-}
+```bash
+cp config.example.json config.json
 ```
 
-This file is git-ignored and never shared.
+Then edit `config.json` with your actual `app_id` and `secret_key` (ask the project owner for these). This file is git-ignored and **never pushed to the repo**.
+
+> **Important:** You must also be connected to the **Wix VPN** for the Copier API to work.
 
 ### 4. Run
 
