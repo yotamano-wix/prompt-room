@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Prompt Room — Streamlit UI for batch Wix site generation.
 Minimal, aesthetic UI for designers. Configure requests; optional reference images and brand book; run; download CSV.
