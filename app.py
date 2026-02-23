@@ -69,8 +69,22 @@ def _git_update() -> tuple[bool, str]:
         )
         lines.append(pull.stdout.strip())
         if pull.returncode != 0:
-            lines.append(pull.stderr.strip())
-            return False, "\n".join(lines)
+            if "Not possible to fast-forward" in pull.stderr or "diverging" in pull.stderr.lower():
+                subprocess.run(
+                    ["git", "fetch", "origin"], cwd=str(PROJECT_ROOT),
+                    capture_output=True, text=True, timeout=60, env=env,
+                )
+                reset = subprocess.run(
+                    ["git", "reset", "--hard", "origin/main"], cwd=str(PROJECT_ROOT),
+                    capture_output=True, text=True, timeout=30, env=env,
+                )
+                lines.append(reset.stdout.strip())
+                if reset.returncode != 0:
+                    lines.append(reset.stderr.strip())
+                    return False, "\n".join(lines)
+            else:
+                lines.append(pull.stderr.strip())
+                return False, "\n".join(lines)
         pip = subprocess.run(
             [pip_cmd, "install", "-q", "-r", "requirements.txt"], cwd=str(PROJECT_ROOT),
             capture_output=True, text=True, timeout=120,

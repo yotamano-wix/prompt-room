@@ -288,36 +288,38 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
         page.wait_for_timeout(3000)
 
         # ----- Fill brand book -----
-        print("[2/6] Filling Brand Book...")
-        # Try multiple selectors for the brand book input
-        brand_book_input = None
-        selectors = [
-            'input[placeholder*="brand book" i]',
-            'textarea[placeholder*="brand book" i]',
-            'input[placeholder*="Brand Book" i]',
-            'textarea[placeholder*="Brand Book" i]',
-        ]
-        for sel in selectors:
-            loc = page.locator(sel).first
-            try:
-                loc.wait_for(state="visible", timeout=5000)
-                brand_book_input = loc
-                break
-            except PlaywrightTimeout:
-                continue
+        if brand_book:
+            print("[2/6] Filling Brand Book...")
+            brand_book_input = None
+            selectors = [
+                'input[placeholder*="brand book" i]',
+                'textarea[placeholder*="brand book" i]',
+                'input[placeholder*="Brand Book" i]',
+                'textarea[placeholder*="Brand Book" i]',
+            ]
+            for sel in selectors:
+                loc = page.locator(sel).first
+                try:
+                    loc.wait_for(state="visible", timeout=5000)
+                    brand_book_input = loc
+                    break
+                except PlaywrightTimeout:
+                    continue
 
-        if not brand_book_input:
-            print("   ⚠️  Brand Book input not found. Taking screenshot for debugging...")
-            page.screenshot(path="test_results/debug_screenshot.png")
-            print("   Saved: test_results/debug_screenshot.png")
-            print("   Keeping browser open...")
-            keep_alive()
-            context.close()
-            return
+            if not brand_book_input:
+                print("   ⚠️  Brand Book input not found. Taking screenshot for debugging...")
+                page.screenshot(path="test_results/debug_screenshot.png")
+                print("   Saved: test_results/debug_screenshot.png")
+                print("   Keeping browser open...")
+                keep_alive()
+                context.close()
+                return
 
-        brand_book_input.click()
-        brand_book_input.fill(brand_book)
-        print(f"   ✅ Brand Book filled! ({len(brand_book)} chars)")
+            brand_book_input.click()
+            brand_book_input.fill(brand_book)
+            print(f"   ✅ Brand Book filled! ({len(brand_book)} chars)")
+        else:
+            print("[2/6] No brand book — skipping (Wix will generate its own).")
 
         # ----- Click Generate Site -----
         print("[3/6] Clicking 'Generate Site'...")
@@ -512,21 +514,21 @@ def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: st
     if manual_brand_book and manual_brand_book.strip():
         brand_book = manual_brand_book.strip()
         copier_path = None
+    elif not reference_image_url:
+        brand_book = ""
+        copier_path = None
     else:
         from pipeline_test import run_prompt
         extra = {"reference_image_url": reference_image_url}
         if copier_prompt_id:
-            # pipeline_test uses prompt IDs from prompts_config; we'd need to temporarily override.
-            # For now we don't change copier ID in pipeline_test; config is the source of truth.
             pass
         run_prompt("copier", use_defaults=True, extra_params=extra, output_dir=run_dir)
         copier_path = run_dir / "copier_output.json"
         with open(copier_path, "r") as f:
             copier_data = json.load(f)
         brand_book = copier_data.get("output", "")
-
-    if not brand_book:
-        return {"run_id": run_id, "error": "Copier produced no output", "run_dir": str(run_dir), "editor_url": None, "publish_url": None, "screenshot_path": None, "brand_book_preview": None}
+        if not brand_book:
+            return {"run_id": run_id, "error": "Copier produced no output", "run_dir": str(run_dir), "editor_url": None, "publish_url": None, "screenshot_path": None, "brand_book_preview": None, "user_prompt": user_prompt, "reference_image_url": reference_image_url}
 
     # Site data overrides from user prompt
     site_data_overrides = {
