@@ -9,6 +9,7 @@ import base64
 import json
 import os
 import random
+import signal
 import subprocess
 import sys
 from datetime import datetime
@@ -286,11 +287,17 @@ def _render_running_view():
         col_abort, _ = st.columns([1, 3])
         with col_abort:
             if st.button("Abort run", type="secondary", key="abort_run"):
-                proc.terminate()
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                except (OSError, ProcessLookupError):
+                    pass
                 try:
                     proc.wait(timeout=5)
                 except Exception:
-                    proc.kill()
+                    try:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    except (OSError, ProcessLookupError):
+                        proc.kill()
                 st.session_state.run_output_dir = None
                 st.session_state.run_process = None
                 st.rerun()
@@ -708,6 +715,7 @@ def main():
                     cwd=str(PROJECT_ROOT),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
+                    start_new_session=True,
                 )
                 st.session_state.run_output_dir = str(output_dir)
                 st.session_state.run_process = proc
