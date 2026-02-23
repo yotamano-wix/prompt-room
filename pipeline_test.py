@@ -188,6 +188,8 @@ def run_prompt(prompt_name: str, extra_params: Optional[Dict[str, Any]] = None, 
     
     except Exception as e:
         print(f"❌ Failed: {e}")
+        if "NameResolutionError" in str(e) or "nodename nor servname" in str(e):
+            print("💡 Are you connected to Wix VPN?")
         raise
 
 def filter_params_for_prompt(prompt_name: str, all_params: Dict[str, Any]) -> Dict[str, Any]:

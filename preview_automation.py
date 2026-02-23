@@ -62,8 +62,9 @@ PROFILE_DIR = Path(".playwright-profile")
 # HELPERS
 # ============================================================================
 
-def build_preview_url(reference_image_url: str = "", site_data_overrides: dict | None = None) -> str:
-    """Build the Wix preview URL with siteData, prompt overrides, and reference image."""
+def build_preview_url(reference_image_url: str = "", site_data_overrides: dict | None = None, prompt_overrides: dict | None = None) -> str:
+    """Build the Wix preview URL with siteData, prompt overrides, and reference image.
+    If prompt_overrides is provided, use it; otherwise use WIX_PREVIEW.prompt_overrides."""
     site_data = {
         "business_term": DEFAULT_TEST_DATA.get("editor_business_type", ""),
         "site_name": DEFAULT_TEST_DATA.get("editor_business_name", ""),
@@ -80,14 +81,14 @@ def build_preview_url(reference_image_url: str = "", site_data_overrides: dict |
 
     base_url = "https://manage.wix.com/edit-template/from"
     template_id = WIX_PREVIEW.get("origin_template_id", "")
-    prompt_overrides = WIX_PREVIEW.get("prompt_overrides", {})
+    overrides = prompt_overrides if prompt_overrides is not None else WIX_PREVIEW.get("prompt_overrides", {})
 
     url = f"{base_url}?originTemplateId={template_id}"
     url += "&aiSiteCreation=true"
     url += f"&siteData={encoded_site_data}"
     url += "&debug=true"
 
-    for key, value in prompt_overrides.items():
+    for key, value in overrides.items():
         if value:
             url += f"&{key}={value}"
 
@@ -255,12 +256,14 @@ def setup_profile():
     print("   ✅ Profile saved!")
 
 
-def automate_preview(brand_book: str, reference_image_url: str, site_data_overrides: dict | None = None, result_dir: Path | None = None, profile_dir_override: Path | None = None):
+def automate_preview(brand_book: str, reference_image_url: str, site_data_overrides: dict | None = None, result_dir: Path | None = None, profile_dir_override: Path | None = None, prompt_overrides: dict | None = None):
     """Open preview, fill brand book, click Generate Site, wait for generation, publish, capture.
-    When result_dir is set (batch mode), saves screenshot and run_result.json there and closes without keep_alive."""
+    When result_dir is set (batch mode), saves screenshot and run_result.json there and closes without keep_alive.
+    editor_url (the preview URL) is included in run_result when result_dir is set."""
     if result_dir is None:
         RESULTS_DIR.mkdir(exist_ok=True)
-    url = build_preview_url(reference_image_url=reference_image_url, site_data_overrides=site_data_overrides)
+    url = build_preview_url(reference_image_url=reference_image_url, site_data_overrides=site_data_overrides, prompt_overrides=prompt_overrides)
+    editor_url = url
 
     print(f"\n🌐 Launching browser...")
 
@@ -481,6 +484,7 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
         if result_dir:
             run_result = {
                 "publish_url": wix_url,
+                "editor_url": editor_url,
                 "screenshot_path": str(screenshot_path) if screenshot_path else None,
             }
             result_dir.mkdir(parents=True, exist_ok=True)
@@ -495,23 +499,32 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
             context.close()
 
 
-def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: str, worker_id: int, batch_results_dir: Path) -> dict:
-    """Run one full flow for batch: copier -> automate_preview. Uses a separate profile per worker.
-    Returns run metadata for the report."""
+def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: str, worker_id: int, batch_results_dir: Path, prompt_overrides: dict | None = None, manual_brand_book: str | None = None, copier_prompt_id: str | None = None) -> dict:
+    """Run one full flow for batch: copier (or manual brand book) -> automate_preview. Uses a separate profile per worker.
+    Returns run metadata for the report.
+    If manual_brand_book is provided, skip Copier and use that text. Otherwise run Copier with reference_image_url.
+    copier_prompt_id: optional prompt ID override for Copier (when not using manual brand book)."""
     run_dir = batch_results_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    from pipeline_test import run_prompt
-
-    # Copier with this run's image; save to run_dir
-    run_prompt("copier", use_defaults=True, extra_params={"reference_image_url": reference_image_url}, output_dir=run_dir)
-    copier_path = run_dir / "copier_output.json"
-    with open(copier_path, "r") as f:
-        copier_data = json.load(f)
-    brand_book = copier_data.get("output", "")
+    if manual_brand_book and manual_brand_book.strip():
+        brand_book = manual_brand_book.strip()
+        copier_path = None
+    else:
+        from pipeline_test import run_prompt
+        extra = {"reference_image_url": reference_image_url}
+        if copier_prompt_id:
+            # pipeline_test uses prompt IDs from prompts_config; we'd need to temporarily override.
+            # For now we don't change copier ID in pipeline_test; config is the source of truth.
+            pass
+        run_prompt("copier", use_defaults=True, extra_params=extra, output_dir=run_dir)
+        copier_path = run_dir / "copier_output.json"
+        with open(copier_path, "r") as f:
+            copier_data = json.load(f)
+        brand_book = copier_data.get("output", "")
 
     if not brand_book:
-        return {"run_id": run_id, "error": "Copier produced no output", "run_dir": str(run_dir)}
+        return {"run_id": run_id, "error": "Copier produced no output", "run_dir": str(run_dir), "editor_url": None, "publish_url": None, "screenshot_path": None, "brand_book_preview": None}
 
     # Site data overrides from user prompt
     site_data_overrides = {
@@ -525,6 +538,7 @@ def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: st
         site_data_overrides=site_data_overrides,
         result_dir=run_dir,
         profile_dir_override=profile_dir,
+        prompt_overrides=prompt_overrides,
     )
 
     run_result_path = run_dir / "run_result.json"
@@ -537,9 +551,10 @@ def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: st
         "run_id": run_id,
         "user_prompt": user_prompt,
         "reference_image_url": reference_image_url,
-        "copier_output_path": str(copier_path),
+        "copier_output_path": str(copier_path) if copier_path else None,
         "brand_book_preview": brand_book[:500] + "..." if len(brand_book) > 500 else brand_book,
         "publish_url": run_result.get("publish_url"),
+        "editor_url": run_result.get("editor_url"),
         "screenshot_path": run_result.get("screenshot_path"),
         "run_dir": str(run_dir),
     }
