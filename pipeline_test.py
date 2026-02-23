@@ -67,14 +67,27 @@ def call_prompt(prompt_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
     headers = ServerSigner(app_def_id=app_id, app_secret=secret_key).sign_app()
     headers = {k: v.decode('utf-8') if isinstance(v, bytes) else v for k, v in headers.items()}
     
-    response = requests.post(
-        f"{WIX_URL}/{prompt_id}",
-        json={"params": params, "prompt_id": prompt_id},
-        headers=headers,
-        timeout=120
-    )
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.post(
+            f"{WIX_URL}/{prompt_id}",
+            json={"params": params, "prompt_id": prompt_id},
+            headers=headers,
+            timeout=120
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.ConnectionError:
+        raise RuntimeError(
+            f"Cannot reach {WIX_URL}. Are you connected to the Wix VPN?"
+        )
+    except requests.exceptions.HTTPError as e:
+        body = ""
+        if e.response is not None:
+            body = e.response.text[:500]
+        raise RuntimeError(
+            f"API error {e.response.status_code if e.response else '?'}: {body}\n"
+            "Hint: make sure you are connected to the Wix VPN."
+        ) from e
 
 # ============================================================================
 # RESULTS MANAGEMENT
