@@ -114,14 +114,18 @@ _setup_git_updates() {
 
   if [[ ! -d .git ]]; then
     echo "Step 6/6  Setting up git for self-updates..."
-    git init -q
-    git remote add origin "$REPO_URL" 2>/dev/null || true
-    GIT_TERMINAL_PROMPT=0 git fetch -q origin 2>/dev/null || {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    if GIT_TERMINAL_PROMPT=0 git clone --depth 1 "$REPO_URL" "$tmpdir" 2>/dev/null; then
+      mv "$tmpdir/.git" .git
+      rm -rf "$tmpdir"
+      git reset HEAD -q 2>/dev/null || true
+      echo "          Done. Use 'Check for updates' in the app to stay current."
+    else
+      rm -rf "$tmpdir"
       echo "          Skipped (repo not accessible). The app works fine without this."
       echo "          Self-updates won't work until git access is set up."
-      return
-    }
-    echo "          Done."
+    fi
     return
   fi
 
