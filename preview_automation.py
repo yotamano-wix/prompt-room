@@ -194,6 +194,12 @@ def launch_browser(playwright, profile_dir=None):
         dismiss_chrome_dialogs()
     else:
         Path(user_data_dir).mkdir(parents=True, exist_ok=True)
+    for lock in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        lock_path = Path(user_data_dir) / lock
+        try:
+            lock_path.unlink(missing_ok=True)
+        except OSError:
+            pass
     return playwright.chromium.launch_persistent_context(
         user_data_dir=user_data_dir,
         headless=False,
