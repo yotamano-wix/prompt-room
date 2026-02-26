@@ -39,7 +39,7 @@ def load_batch_config():
     return prompts, urls, config.get("max_concurrent", 2)
 
 
-def worker(task_queue: Queue, result_queue: Queue, worker_id: int, batch_results_dir: Path, prompt_overrides: dict | None):
+def worker(task_queue: Queue, result_queue: Queue, worker_id: int, batch_results_dir: Path, prompt_overrides: dict | None, keep_editor_open: bool = False):
     """Run batch flows from the task queue. Each task is (run_id, user_prompt, reference_image_url, task_brand_book or None)."""
     while True:
         try:
@@ -56,6 +56,7 @@ def worker(task_queue: Queue, result_queue: Queue, worker_id: int, batch_results
                 run_id, user_prompt, reference_image_url, worker_id, batch_results_dir,
                 prompt_overrides=prompt_overrides,
                 manual_brand_book=task_brand_book,
+                keep_editor_open=keep_editor_open,
             )
         except Exception as e:
             result = {"run_id": run_id, "error": str(e), "user_prompt": user_prompt, "reference_image_url": reference_image_url}
@@ -202,6 +203,7 @@ def main():
         tasks_config = run_config["tasks"]
         concurrency = min(int(run_config.get("concurrency", 2)), 4)
         prompt_overrides = run_config.get("prompt_overrides") or {}
+        keep_editor_open = run_config.get("keep_editor_open", False)
         tasks = []
         for i, t in enumerate(tasks_config):
             run_id = t.get("run_id") or f"run_{i+1:03d}"
@@ -223,7 +225,7 @@ def main():
         workers = [
             Process(
                 target=worker,
-                args=(task_queue, result_queue, i, output_dir, prompt_overrides),
+                args=(task_queue, result_queue, i, output_dir, prompt_overrides, keep_editor_open),
             )
             for i in range(concurrency)
         ]

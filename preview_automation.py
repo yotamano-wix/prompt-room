@@ -91,8 +91,16 @@ def build_preview_url(reference_image_url: str = "", site_data_overrides: dict |
     url += "&debug=true"
 
     for key, value in overrides.items():
+        if key == "_url_append":
+            continue
         if value:
             url += f"&{key}={value}"
+
+    raw_append = overrides.get("_url_append", "")
+    if raw_append:
+        if not raw_append.startswith("&"):
+            raw_append = "&" + raw_append
+        url += raw_append
 
     if reference_image_url:
         url += f"&referenceImage={quote(reference_image_url, safe='')}"
@@ -264,7 +272,7 @@ def setup_profile():
     print("   ✅ Profile saved!")
 
 
-def automate_preview(brand_book: str, reference_image_url: str, site_data_overrides: dict | None = None, result_dir: Path | None = None, profile_dir_override: Path | None = None, prompt_overrides: dict | None = None, user_prompt: str | None = None):
+def automate_preview(brand_book: str, reference_image_url: str, site_data_overrides: dict | None = None, result_dir: Path | None = None, profile_dir_override: Path | None = None, prompt_overrides: dict | None = None, user_prompt: str | None = None, keep_editor_open: bool = False):
     """Open preview, fill user request + brand book, click Generate Site, wait for generation, publish, capture.
     When result_dir is set (batch mode), saves screenshot and run_result.json there and closes without keep_alive.
     editor_url (the preview URL) is included in run_result when result_dir is set.
@@ -544,6 +552,9 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
             result_dir.mkdir(parents=True, exist_ok=True)
             (result_dir / "run_result.json").write_text(json.dumps(run_result, indent=2))
             print("\n✅ Batch run complete.")
+            if keep_editor_open:
+                print("   Editor stays open. Press Enter or close browser to continue...")
+                keep_alive()
             context.close()
         else:
             print("\n" + "=" * 50)
@@ -553,7 +564,7 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
             context.close()
 
 
-def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: str, worker_id: int, batch_results_dir: Path, prompt_overrides: dict | None = None, manual_brand_book: str | None = None, copier_prompt_id: str | None = None) -> dict:
+def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: str, worker_id: int, batch_results_dir: Path, prompt_overrides: dict | None = None, manual_brand_book: str | None = None, copier_prompt_id: str | None = None, keep_editor_open: bool = False) -> dict:
     """Run one full flow for batch: copier (or manual brand book) -> automate_preview. Uses a separate profile per worker.
     Returns run metadata for the report.
     If manual_brand_book is provided, skip Copier and use that text. Otherwise run Copier with reference_image_url.
@@ -594,6 +605,7 @@ def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: st
         profile_dir_override=profile_dir,
         prompt_overrides=prompt_overrides,
         user_prompt=user_prompt,
+        keep_editor_open=keep_editor_open,
     )
 
     run_result_path = run_dir / "run_result.json"

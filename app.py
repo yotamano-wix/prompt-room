@@ -410,6 +410,7 @@ def main():
     st.markdown("---")
     st.markdown("### 4. Concurrency")
     concurrency = st.number_input("Browsers at once", min_value=1, max_value=4, value=min(2, max_concurrent_default), key="conc")
+    keep_editor_open = st.checkbox("Keep editor open after run", value=False, key="keep_editor")
 
     # ----- Wix login (collapsed) -----
     with st.expander("Wix login (one-time per machine)"):
@@ -623,7 +624,7 @@ def main():
     if show_prompt_ids != st.session_state.show_prompt_ids_section:
         st.session_state.show_prompt_ids_section = show_prompt_ids
         if not show_prompt_ids:
-            for k in ["arch", "typo", "designer", "copier"]:
+            for k in ["arch", "typo", "designer", "copier", "url_append"]:
                 st.session_state.pop(k, None)
         st.rerun()
 
@@ -645,6 +646,9 @@ def main():
             prompt_overrides["designerPromptId"] = designer_id.strip()
         if copier_id.strip():
             prompt_overrides["copierPromptId"] = copier_id.strip()
+        url_append = st.text_input("URL append", value="", key="url_append", placeholder="e.g. &someParam=value&other=123")
+        if url_append.strip():
+            prompt_overrides["_url_append"] = url_append.strip()
 
     # ========== Run ==========
     st.markdown("---")
@@ -733,6 +737,7 @@ def main():
                     "tasks": tasks,
                     "concurrency": concurrency,
                     "prompt_overrides": prompt_overrides,
+                    "keep_editor_open": keep_editor_open,
                 }
                 config_path = output_dir / "run_config.json"
                 config_path.write_text(json.dumps(run_config, indent=2))
