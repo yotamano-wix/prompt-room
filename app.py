@@ -64,13 +64,18 @@ def _git_update() -> tuple[bool, str]:
     lines = []
     try:
         env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        subprocess.run(
+            ["git", "stash", "--include-untracked"], cwd=str(PROJECT_ROOT),
+            capture_output=True, text=True, timeout=15, env=env,
+        )
         pull = subprocess.run(
             ["git", "pull", "--ff-only"], cwd=str(PROJECT_ROOT),
             capture_output=True, text=True, timeout=60, env=env,
         )
         lines.append(pull.stdout.strip())
         if pull.returncode != 0:
-            if "Not possible to fast-forward" in pull.stderr or "diverging" in pull.stderr.lower():
+            pull_err = pull.stderr or ""
+            if "Not possible to fast-forward" in pull_err or "diverging" in pull_err.lower() or "local changes" in pull_err.lower():
                 subprocess.run(
                     ["git", "fetch", "origin"], cwd=str(PROJECT_ROOT),
                     capture_output=True, text=True, timeout=60, env=env,
@@ -84,7 +89,7 @@ def _git_update() -> tuple[bool, str]:
                     lines.append(reset.stderr.strip())
                     return False, "\n".join(lines)
             else:
-                lines.append(pull.stderr.strip())
+                lines.append(pull_err.strip())
                 return False, "\n".join(lines)
         pip = subprocess.run(
             [pip_cmd, "install", "-q", "-r", "requirements.txt"], cwd=str(PROJECT_ROOT),
