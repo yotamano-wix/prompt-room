@@ -232,6 +232,8 @@ def apply_custom_css():
     [data-testid="stImage"] {{ margin-bottom: 4px; }}
     /* Slightly softer horizontal rules */
     hr {{ border: none; border-top: 1px solid #e2e8f0; margin: 1.5rem 0; }}
+    /* Request containers: compact spacing */
+    [data-testid="stVerticalBlockBorderWrapper"] {{ margin-bottom: 0.35rem; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -368,6 +370,8 @@ def main():
         st.session_state.show_image_ref_section = False
     if "show_prompt_ids_section" not in st.session_state:
         st.session_state.show_prompt_ids_section = False
+    if "manual_prompt_entries" not in st.session_state:
+        st.session_state.manual_prompt_entries = [""]
 
     # When a run is in progress, show only progress view (no form) and return
     if _render_running_view():
@@ -439,16 +443,33 @@ def main():
         else:
             st.caption("Add user_prompts to batch_config.json to use the pool.")
     else:
-        manual_prompts_text = st.text_area(
-            "One request per line",
-            placeholder="Create a website for a Coffee Shop...\nCreate a website for a Yoga Studio...",
-            height=100,
-            key="manual_prompts",
-        )
-        manual_prompts = [s.strip() for s in (manual_prompts_text or "").splitlines() if s.strip()]
+        entries = st.session_state.manual_prompt_entries
+
+        for idx in range(len(entries)):
+            with st.container(border=True):
+                col_input, col_remove = st.columns([12, 1])
+                with col_input:
+                    entries[idx] = st.text_input(
+                        f"Request {idx + 1}",
+                        value=entries[idx],
+                        placeholder="Create a website for a Coffee Shop...",
+                        key=f"manual_prompt_{idx}",
+                        label_visibility="collapsed" if idx > 0 else "visible",
+                    )
+                with col_remove:
+                    st.markdown("<div style='height:0.45rem'></div>", unsafe_allow_html=True)
+                    if st.button("−", key=f"remove_prompt_{idx}", disabled=len(entries) <= 1):
+                        entries.pop(idx)
+                        st.rerun()
+
+        if st.button("＋  Add request", key="add_prompt"):
+            entries.append("")
+            st.rerun()
+
+        manual_prompts = [s.strip() for s in entries if s.strip()]
         count = len(manual_prompts)
         if count == 0:
-            st.caption("Enter at least one request (one per line).")
+            st.caption("Enter at least one request.")
 
     # ========== 2. Reference images ==========
     st.markdown("---")

@@ -264,10 +264,11 @@ def setup_profile():
     print("   ✅ Profile saved!")
 
 
-def automate_preview(brand_book: str, reference_image_url: str, site_data_overrides: dict | None = None, result_dir: Path | None = None, profile_dir_override: Path | None = None, prompt_overrides: dict | None = None):
-    """Open preview, fill brand book, click Generate Site, wait for generation, publish, capture.
+def automate_preview(brand_book: str, reference_image_url: str, site_data_overrides: dict | None = None, result_dir: Path | None = None, profile_dir_override: Path | None = None, prompt_overrides: dict | None = None, user_prompt: str | None = None):
+    """Open preview, fill user request + brand book, click Generate Site, wait for generation, publish, capture.
     When result_dir is set (batch mode), saves screenshot and run_result.json there and closes without keep_alive.
-    editor_url (the preview URL) is included in run_result when result_dir is set."""
+    editor_url (the preview URL) is included in run_result when result_dir is set.
+    user_prompt: if provided, pasted into the site-description text area instead of being passed in the URL."""
     if result_dir is None:
         RESULTS_DIR.mkdir(exist_ok=True)
     url = build_preview_url(reference_image_url=reference_image_url, site_data_overrides=site_data_overrides, prompt_overrides=prompt_overrides)
@@ -280,7 +281,7 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
         page = context.new_page()
 
         # ----- Navigate -----
-        print("[1/6] Opening preview URL...")
+        print("[1/7] Opening preview URL...")
         page.goto(url, timeout=120000)
 
         if not wait_for_aria_page(page):
@@ -293,9 +294,52 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
         print("   ✅ Page loaded!")
         page.wait_for_timeout(3000)
 
+        # ----- Fill user request -----
+        if user_prompt:
+            print("[2/7] Filling user request...")
+            user_request_input = None
+            request_selectors = [
+                'textarea[placeholder*="Describe the site" i]',
+                'textarea[placeholder*="site you want to create" i]',
+                'textarea[placeholder*="describe" i]',
+            ]
+            for sel in request_selectors:
+                loc = page.locator(sel).first
+                try:
+                    loc.wait_for(state="visible", timeout=5000)
+                    user_request_input = loc
+                    break
+                except PlaywrightTimeout:
+                    continue
+
+            if user_request_input:
+                print("   Waiting for auto-generated text to appear...")
+                max_wait = 30
+                elapsed = 0
+                poll = 2
+                while elapsed < max_wait:
+                    val = user_request_input.input_value()
+                    if val and val.strip():
+                        print(f"   Auto-fill complete ({len(val)} chars). Replacing...")
+                        break
+                    page.wait_for_timeout(poll * 1000)
+                    elapsed += poll
+                else:
+                    print("   No auto-fill detected, proceeding with paste...")
+                user_request_input.click()
+                user_request_input.fill(user_prompt)
+                print(f"   ✅ User request filled! ({len(user_prompt)} chars)")
+            else:
+                print("   ⚠️  User request input not found. Taking screenshot for debugging...")
+                debug_path = str(result_dir / "debug_user_request.png") if result_dir else "test_results/debug_user_request.png"
+                page.screenshot(path=debug_path)
+                print(f"   Saved: {debug_path}")
+        else:
+            print("[2/7] No user request — using value from URL.")
+
         # ----- Fill brand book -----
         if brand_book:
-            print("[2/6] Filling Brand Book...")
+            print("[3/7] Filling Brand Book...")
             brand_book_input = None
             selectors = [
                 'input[placeholder*="brand book" i]',
@@ -325,10 +369,10 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
             brand_book_input.fill(brand_book)
             print(f"   ✅ Brand Book filled! ({len(brand_book)} chars)")
         else:
-            print("[2/6] No brand book — skipping (Wix will generate its own).")
+            print("[3/7] No brand book — skipping (Wix will generate its own).")
 
         # ----- Click Generate Site -----
-        print("[3/6] Clicking 'Generate Site'...")
+        print("[4/7] Clicking 'Generate Site'...")
         generate_btn = page.get_by_role("button", name="Generate Site")
         try:
             generate_btn.wait_for(state="visible", timeout=10000)
@@ -338,8 +382,8 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
             print("   ⚠️  'Generate Site' button not found. Taking screenshot...")
             page.screenshot(path="test_results/debug_screenshot.png")
 
-        # ----- Step 4: Wait for generation (Publish button becomes enabled) -----
-        print("\n[4/6] Waiting for site generation (Publish button to enable)...")
+        # ----- Step 5: Wait for generation (Publish button becomes enabled) -----
+        print("\n[5/7] Waiting for site generation (Publish button to enable)...")
         print("   (Generation takes ~4-5 min. Run from a terminal so the process is not killed.)")
         # Let the page settle before we start polling (avoid touching DOM during heavy load)
         page.wait_for_timeout(60 * 1000)  # 1 minute
@@ -367,8 +411,8 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
 
         page.wait_for_timeout(2000)
 
-        # ----- Step 5: Click Publish (top-right, then in popover) -----
-        print("[5/6] Clicking Publish...")
+        # ----- Step 6: Click Publish (top-right, then in popover) -----
+        print("[6/7] Clicking Publish...")
         publish_btn.click()
         page.wait_for_timeout(800)
 
@@ -396,8 +440,8 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
         except PlaywrightTimeout:
             pass
 
-        # ----- Step 6: Get published URL, open in new tab, full-page screenshot -----
-        print("[6/6] Capturing published site...")
+        # ----- Step 7: Get published URL, open in new tab, full-page screenshot -----
+        print("[7/7] Capturing published site...")
         wix_url = None
 
         # Strategy 1: Click "View Site" link (opens published site; we then capture from new tab or same page)
@@ -536,10 +580,10 @@ def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: st
         if not brand_book:
             return {"run_id": run_id, "error": "Copier produced no output", "run_dir": str(run_dir), "editor_url": None, "publish_url": None, "screenshot_path": None, "brand_book_preview": None, "user_prompt": user_prompt, "reference_image_url": reference_image_url}
 
-    # Site data overrides from user prompt
     site_data_overrides = {
-        "site_description": user_prompt,
-        "business_term": "",
+        "site_description": "",
+        "business_term": "site",
+        "site_name": "",
     }
     profile_dir = Path(f".playwright-profile-batch-{worker_id}")
     automate_preview(
@@ -549,6 +593,7 @@ def run_single_batch_flow(run_id: str, user_prompt: str, reference_image_url: st
         result_dir=run_dir,
         profile_dir_override=profile_dir,
         prompt_overrides=prompt_overrides,
+        user_prompt=user_prompt,
     )
 
     run_result_path = run_dir / "run_result.json"
