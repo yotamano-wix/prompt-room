@@ -12,6 +12,9 @@ __pycache__/
 # Batch run outputs
 batch_results/
 
+# Screenshot outputs
+screenshot_results/
+
 # Test outputs (not versioned - prompts are versioned, not results)
 test_results/
 
