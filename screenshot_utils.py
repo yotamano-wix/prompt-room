@@ -98,6 +98,59 @@ def _smooth_scroll_js(
 }}"""
 
 
+def _human_scroll_js(duration_ms: int = 12000, pause_bottom_ms: int = 2000) -> str:
+    """Return JS that simulates natural trackpad scrolling — short momentum
+    bursts with tiny pauses, like someone scrolling to show off a page.
+
+    The overall duration is approximate (varies with randomness).
+    """
+    return f"""() => {{
+    return new Promise((resolve) => {{
+        const totalDuration = {duration_ms};
+        const pauseBottom = {pause_bottom_ms};
+        const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+        if (maxScroll <= 0) {{ setTimeout(resolve, 500); return; }}
+
+        window.scrollTo(0, 0);
+        let pos = 0;
+
+        function easeOut(t) {{ return 1 - Math.pow(1 - t, 2); }}
+
+        function rand(min, max) {{ return min + Math.random() * (max - min); }}
+
+        function swipe(distance, swipeDur) {{
+            return new Promise((res) => {{
+                const start = performance.now();
+                const startPos = pos;
+                function step(now) {{
+                    const t = Math.min((now - start) / swipeDur, 1);
+                    pos = Math.min(startPos + distance * easeOut(t), maxScroll);
+                    window.scrollTo(0, pos);
+                    if (t < 1 && pos < maxScroll) requestAnimationFrame(step);
+                    else res();
+                }}
+                requestAnimationFrame(step);
+            }});
+        }}
+
+        (async () => {{
+            await new Promise(r => setTimeout(r, 1000));
+            const avgSpeed = maxScroll / totalDuration;
+            while (pos < maxScroll) {{
+                const remaining = maxScroll - pos;
+                const dist = Math.min(remaining, rand(600, 800) * (avgSpeed / 0.35));
+                const dur = dist / rand(avgSpeed * 1.0, avgSpeed * 1.8);
+                await swipe(dist, Math.max(400, dur));
+                if (pos < maxScroll) {{
+                    await new Promise(r => setTimeout(r, rand(50, 180)));
+                }}
+            }}
+            setTimeout(resolve, pauseBottom);
+        }})();
+    }});
+}}"""
+
+
 def _sanitize_filename(url: str) -> str:
     """Turn a URL into a safe, readable filename (without extension)."""
     parsed = urlparse(url)
@@ -293,6 +346,27 @@ def _ffmpeg_trim(src: Path, dst: Path, start_sec: float, duration_sec: float):
     )
 
 
+def _ffmpeg_to_gif(src: Path, dst: Path, fps: int = 15, width: int = 640):
+    """Convert a video to a high-quality GIF using a 2-pass palette approach."""
+    palette = src.with_suffix(".palette.png")
+    filters = f"fps={fps},scale={width}:-1:flags=lanczos"
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(src),
+             "-vf", f"{filters},palettegen=stats_mode=diff",
+             str(palette)],
+            capture_output=True, timeout=120, check=True,
+        )
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(src), "-i", str(palette),
+             "-lavfi", f"{filters} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5",
+             str(dst)],
+            capture_output=True, timeout=180, check=True,
+        )
+    finally:
+        palette.unlink(missing_ok=True)
+
+
 def capture_scroll_video(
     url: str,
     output_path: Path,
@@ -300,6 +374,8 @@ def capture_scroll_video(
     scroll_speed: str | int = "medium",
     easing: str | float = "gentle",
     pre_scroll: bool = True,
+    scroll_style: str = "cinematic",
+    export_gif: bool = False,
     on_status: Callable[[str], None] | None = None,
 ) -> dict:
     """Record a smooth-scroll video of *url* using Playwright's built-in
@@ -309,12 +385,14 @@ def capture_scroll_video(
     *easing*: preset ("none"/"gentle"/"moderate"/"strong") or float power.
     *pre_scroll*: if True, fast-scroll the page before recording to trigger
         lazy-loaded content. Set False to capture entrance animations.
+    *scroll_style*: "cinematic" (one continuous sweep) or "human" (trackpad bursts).
+    *export_gif*: if True, also convert the final video to an animated GIF.
     Duration is calculated automatically from the page's scroll height.
 
-    Returns result dict: {url, path, success, error, scroll_height, scroll_duration_sec}.
+    Returns result dict: {url, path, gif_path, success, error, scroll_height, scroll_duration_sec}.
     """
-    result = {"url": url, "path": str(output_path), "success": False, "error": None,
-              "scroll_height": 0, "scroll_duration_sec": 0}
+    result = {"url": url, "path": str(output_path), "gif_path": None, "success": False,
+              "error": None, "scroll_height": 0, "scroll_duration_sec": 0}
     tmp_dir = tempfile.mkdtemp(prefix="pw_video_")
     has_ffmpeg = _has_ffmpeg()
     _status = on_status or (lambda _: None)
@@ -357,7 +435,31 @@ def capture_scroll_video(
             rec_page = rec_ctx.new_page()
             t_page_created = time.monotonic()
 
+            t_before_goto = time.monotonic()
             rec_page.goto(url, timeout=30_000, wait_until="load")
+            content_paint_ms = rec_page.evaluate("""() => new Promise(resolve => {
+                try {
+                    new PerformanceObserver(list => {
+                        const entries = list.getEntries();
+                        if (entries.length) {
+                            resolve(entries[entries.length - 1].startTime);
+                        } else {
+                            resolve(0);
+                        }
+                    }).observe({type: 'largest-contentful-paint', buffered: true});
+                    setTimeout(() => {
+                        const fp = performance.getEntriesByType('paint')
+                            .find(p => p.name === 'first-contentful-paint');
+                        resolve(fp ? fp.startTime : 0);
+                    }, 2000);
+                } catch(e) {
+                    const fp = performance.getEntriesByType('paint')
+                        .find(p => p.name === 'first-contentful-paint');
+                    resolve(fp ? fp.startTime : 0);
+                }
+            })""")
+            t_content_ready = t_before_goto + (content_paint_ms / 1000) if content_paint_ms > 0 else None
+
             if pre_scroll:
                 _status("Pre-scrolling to load content...")
                 _trigger_deferred_loading(rec_page)
@@ -366,15 +468,23 @@ def capture_scroll_video(
                 rec_page.evaluate("() => window.scrollTo(0, 0)")
                 rec_page.wait_for_timeout(300)
             else:
+                rec_page.wait_for_load_state("load", timeout=15_000)
+                _trigger_deferred_loading(rec_page)
                 rec_page.wait_for_timeout(500)
+                rec_page.mouse.move(400, 300)
+                rec_page.wait_for_timeout(300)
+                rec_page.mouse.move(600, 400)
+                rec_page.wait_for_timeout(400)
+                _trigger_deferred_loading(rec_page)
+                rec_page.wait_for_timeout(300)
 
             _status(f"Recording scroll ({result['scroll_duration_sec']}s)...")
             t_scroll_start = time.monotonic()
-            scroll_js = _smooth_scroll_js(
-                duration_ms=scroll_duration_ms,
-                pause_bottom_ms=int(PAUSE_AFTER_SCROLL_SEC * 1000),
-                easing=easing,
-            )
+            pause_bottom = int(PAUSE_AFTER_SCROLL_SEC * 1000)
+            if scroll_style == "human":
+                scroll_js = _human_scroll_js(scroll_duration_ms, pause_bottom)
+            else:
+                scroll_js = _smooth_scroll_js(scroll_duration_ms, pause_bottom, easing)
             rec_page.evaluate(scroll_js)
 
             _status("Saving video...")
@@ -385,9 +495,14 @@ def capture_scroll_video(
 
         # --- Phase 3: trim ---
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        pre_scroll_sec = t_scroll_start - t_page_created
-        useful_duration = PAUSE_BEFORE_SCROLL_SEC + (scroll_duration_ms / 1000) + PAUSE_AFTER_SCROLL_SEC
-        trim_start = max(0, pre_scroll_sec - PAUSE_BEFORE_SCROLL_SEC - TRIM_PADDING_SEC)
+        scroll_end_sec = (t_scroll_start - t_page_created) + (scroll_duration_ms / 1000) + PAUSE_AFTER_SCROLL_SEC
+
+        if not pre_scroll and t_content_ready is not None:
+            trim_start = max(0, (t_content_ready - t_page_created) - TRIM_PADDING_SEC)
+        else:
+            trim_start = max(0, (t_scroll_start - t_page_created) - PAUSE_BEFORE_SCROLL_SEC - TRIM_PADDING_SEC)
+
+        useful_duration = scroll_end_sec - trim_start + TRIM_PADDING_SEC
 
         raw_video = Path(video_tmp)
         if has_ffmpeg and trim_start > 1.0:
@@ -398,6 +513,16 @@ def capture_scroll_video(
                 shutil.move(str(raw_video), str(output_path))
         else:
             shutil.move(str(raw_video), str(output_path))
+
+        # --- Phase 4: GIF export ---
+        if export_gif and has_ffmpeg and output_path.exists():
+            gif_path = output_path.with_suffix(".gif")
+            _status("Converting to GIF...")
+            try:
+                _ffmpeg_to_gif(output_path, gif_path, fps=15, width=viewport_width)
+                result["gif_path"] = str(gif_path)
+            except Exception:
+                pass
 
         result["success"] = True
     except Exception as exc:
@@ -415,6 +540,8 @@ def capture_scroll_videos(
     scroll_speed: str | int = "medium",
     easing: str | float = "gentle",
     pre_scroll: bool = True,
+    scroll_style: str = "cinematic",
+    export_gif: bool = False,
     on_progress: Callable[[int, int, dict], None] | None = None,
     on_status: Callable[[str], None] | None = None,
 ) -> list[dict]:
@@ -423,6 +550,8 @@ def capture_scroll_videos(
     *scroll_speed*: preset name ("slow"/"medium"/"fast") or px/s int.
     *easing*: preset ("none"/"gentle"/"moderate"/"strong") or float power.
     *pre_scroll*: fast-scroll before recording to load lazy content.
+    *scroll_style*: "cinematic" or "human".
+    *export_gif*: also convert each video to an animated GIF.
     *on_progress(index, total, result)* is called after each URL completes.
     *on_status(message)* is called with phase updates during each capture.
     """
@@ -441,7 +570,7 @@ def capture_scroll_videos(
 
         r = capture_scroll_video(
             url, out_path, viewport_width, scroll_speed, easing, pre_scroll,
-            on_status=on_status,
+            scroll_style=scroll_style, export_gif=export_gif, on_status=on_status,
         )
         results.append(r)
         if on_progress:

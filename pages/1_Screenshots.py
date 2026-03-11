@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import importlib
+import platform
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -7,12 +10,31 @@ from pathlib import Path
 import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from shared_ui import apply_custom_css, render_sidebar
-from screenshot_utils import capture_screenshots, capture_scroll_videos
+# Force-reload to avoid stale module cache during Streamlit hot-reload
+import shared_ui  # noqa: E402
+import screenshot_utils  # noqa: E402
+importlib.reload(shared_ui)
+importlib.reload(screenshot_utils)
+
+from shared_ui import apply_custom_css, render_sidebar  # noqa: E402
+from screenshot_utils import capture_screenshots, capture_scroll_videos  # noqa: E402
 
 RESULTS_ROOT = PROJECT_ROOT / "screenshot_results"
+
+
+def _open_folder(path: str | Path):
+    """Open a folder in the OS file manager."""
+    p = str(path)
+    system = platform.system()
+    if system == "Darwin":
+        subprocess.Popen(["open", p])
+    elif system == "Windows":
+        subprocess.Popen(["explorer", p])
+    else:
+        subprocess.Popen(["xdg-open", p])
 
 
 def _render_past_results():
@@ -35,14 +57,31 @@ def _render_past_results():
             key="past_screenshot_batch",
         )
         if selected:
+            col_info, col_open = st.columns([4, 1])
             images = sorted(selected.glob("*.png"))
             videos = sorted(selected.glob("*.webm"))
-            if not images and not videos:
-                st.caption("No results in this batch.")
-            else:
-                st.caption(f"{len(images)} images, {len(videos)} videos in `{selected.name}/`")
+            gifs = sorted(selected.glob("*.gif"))
+            with col_info:
+                if not images and not videos and not gifs:
+                    st.caption("No results in this batch.")
+                else:
+                    parts = []
+                    if images:
+                        parts.append(f"{len(images)} images")
+                    if videos:
+                        parts.append(f"{len(videos)} videos")
+                    if gifs:
+                        parts.append(f"{len(gifs)} GIFs")
+                    st.caption(f"{', '.join(parts)} in `{selected.name}/`")
+            with col_open:
+                if st.button("Open folder", key="open_folder_past"):
+                    _open_folder(selected)
+            if images or videos or gifs:
                 _render_image_grid(images)
                 _render_video_list(videos)
+                if gifs:
+                    st.markdown("**GIFs**")
+                    _render_image_grid(gifs)
 
 
 def _render_image_grid(paths: list[Path]):
@@ -93,8 +132,15 @@ def _render_results(results: list[dict], mode: str):
                     info_parts.append(f"{r['scroll_height']}px")
                 if r.get("scroll_duration_sec"):
                     info_parts.append(f"{r['scroll_duration_sec']}s scroll")
+                gif_path = Path(r["gif_path"]) if r.get("gif_path") else None
+                if gif_path and gif_path.exists():
+                    gif_size_mb = gif_path.stat().st_size / (1024 * 1024)
+                    info_parts.append(f"GIF {gif_size_mb:.1f} MB")
                 st.caption(" — ".join(info_parts))
                 st.video(str(p))
+                if gif_path and gif_path.exists():
+                    with st.expander("Preview GIF"):
+                        st.image(str(gif_path))
 
 
 def main():
@@ -137,19 +183,33 @@ def main():
 
     easing = "gentle"
     pre_scroll = True
+    scroll_style = "cinematic"
+    export_gif = False
     if is_video:
         with st.expander("Advanced video settings"):
-            easing = st.select_slider(
-                "Scroll easing (acceleration / deceleration)",
-                options=["None", "Gentle", "Moderate", "Strong"],
-                value="Gentle",
-                key="scroll_easing",
+            scroll_style = st.radio(
+                "Scroll style",
+                ["Cinematic", "Human-like"],
+                index=0,
+                key="scroll_style",
                 help=(
-                    "Controls how much the scroll accelerates at the start and decelerates at the end. "
-                    "'None' = constant speed (linear), 'Strong' = pronounced ease-in and ease-out."
+                    "Cinematic: one continuous smooth sweep. "
+                    "Human-like: natural trackpad scrolling with short momentum bursts."
                 ),
             )
-            easing = easing.lower()
+            scroll_style = "human" if "Human" in scroll_style else "cinematic"
+            if scroll_style == "cinematic":
+                easing = st.select_slider(
+                    "Scroll easing (acceleration / deceleration)",
+                    options=["None", "Gentle", "Moderate", "Strong"],
+                    value="Gentle",
+                    key="scroll_easing",
+                    help=(
+                        "Controls how much the scroll accelerates at the start and decelerates at the end. "
+                        "'None' = constant speed (linear), 'Strong' = pronounced ease-in and ease-out."
+                    ),
+                )
+                easing = easing.lower()
             pre_scroll = st.checkbox(
                 "Pre-scroll to load all content",
                 value=True,
@@ -158,6 +218,12 @@ def main():
                     "Fast-scrolls the page before recording to trigger lazy-loaded content. "
                     "Turn off to capture one-time entrance animations."
                 ),
+            )
+            export_gif = st.checkbox(
+                "Also export as GIF",
+                value=False,
+                key="export_gif",
+                help="Convert each video to an animated GIF (requires FFmpeg).",
             )
 
     urls = [u.strip() for u in urls_text.strip().splitlines() if u.strip()] if urls_text else []
@@ -173,8 +239,10 @@ def main():
 
         progress_bar = st.progress(0, text=f"Starting... 0 / {len(urls)}")
         status_area = st.empty()
+        results_container = st.container()
 
         current_idx = [0]
+        all_results: list[dict] = []
 
         def on_status(msg: str):
             url_label = urls[current_idx[0]] if current_idx[0] < len(urls) else ""
@@ -192,39 +260,88 @@ def main():
             else:
                 status = f"FAILED: {result['error']}"
             progress_bar.progress(frac, text=f"{i + 1} / {total} — {status}")
+            all_results.append(result)
+
+            with results_container:
+                if result["success"]:
+                    p = Path(result["path"])
+                    if p.exists():
+                        url_label = result["url"]
+                        if len(url_label) > 80:
+                            url_label = url_label[:77] + "..."
+                        info_parts = [url_label]
+                        if is_video:
+                            if result.get("scroll_height"):
+                                info_parts.append(f"{result['scroll_height']}px")
+                            if result.get("scroll_duration_sec"):
+                                info_parts.append(f"{result['scroll_duration_sec']}s scroll")
+                            gif_path = Path(result["gif_path"]) if result.get("gif_path") else None
+                            if gif_path and gif_path.exists():
+                                gif_size_mb = gif_path.stat().st_size / (1024 * 1024)
+                                info_parts.append(f"GIF {gif_size_mb:.1f} MB")
+                            st.caption(" — ".join(info_parts))
+                            st.video(str(p))
+                            if gif_path and gif_path.exists():
+                                with st.expander("Preview GIF"):
+                                    st.image(str(gif_path))
+                        else:
+                            st.caption(" — ".join(info_parts))
+                            st.image(str(p), width="stretch")
+                else:
+                    with results_container:
+                        st.caption(f"Failed: {result['url']} — {result['error']}")
 
         if is_video:
-            final_results = capture_scroll_videos(
+            capture_scroll_videos(
                 urls,
                 output_dir,
                 viewport_width=viewport_width,
                 scroll_speed=scroll_speed.lower(),
                 easing=easing,
                 pre_scroll=pre_scroll,
+                scroll_style=scroll_style,
+                export_gif=export_gif,
                 on_progress=on_progress,
                 on_status=on_status,
             )
         else:
-            final_results = capture_screenshots(
+            capture_screenshots(
                 urls,
                 output_dir,
                 viewport_width=viewport_width,
                 on_progress=on_progress,
             )
 
-        progress_bar.progress(1.0, text=f"Done — {len(final_results)} {suffix}")
-        st.session_state["last_screenshot_results"] = final_results
+        status_area.empty()
+        progress_bar.progress(1.0, text=f"Done — {len(all_results)} {suffix}")
+        st.session_state["last_screenshot_results"] = all_results
         st.session_state["last_screenshot_dir"] = str(output_dir)
         st.session_state["last_capture_mode"] = "video" if is_video else "image"
 
-        st.markdown(f"Saved to `{output_dir.relative_to(PROJECT_ROOT)}/`")
-        _render_results(final_results, "video" if is_video else "image")
+        with results_container:
+            succeeded = [r for r in all_results if r["success"]]
+            failed = [r for r in all_results if not r["success"]]
+            if succeeded:
+                st.success(f"{len(succeeded)} of {len(all_results)} {suffix} captured successfully.")
+            if failed:
+                st.error(f"{len(failed)} failed.")
+            col_path, col_btn = st.columns([4, 1])
+            with col_path:
+                st.markdown(f"Saved to `{output_dir.relative_to(PROJECT_ROOT)}/`")
+            with col_btn:
+                if st.button("Open folder", key="open_folder_new"):
+                    _open_folder(output_dir)
 
     elif "last_screenshot_results" in st.session_state and st.session_state["last_screenshot_results"]:
         out = st.session_state.get("last_screenshot_dir", "")
         mode = st.session_state.get("last_capture_mode", "image")
         if out:
-            st.caption(f"Last batch: `{Path(out).relative_to(PROJECT_ROOT)}/`")
+            col_path, col_btn = st.columns([4, 1])
+            with col_path:
+                st.caption(f"Last batch: `{Path(out).relative_to(PROJECT_ROOT)}/`")
+            with col_btn:
+                if st.button("Open folder", key="open_folder_last"):
+                    _open_folder(out)
         _render_results(st.session_state["last_screenshot_results"], mode)
 
 
