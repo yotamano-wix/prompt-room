@@ -5,7 +5,6 @@ Prompt Room — Streamlit UI for batch Wix site generation.
 Minimal, aesthetic UI for designers. Configure requests; optional reference images and brand book; run; download CSV.
 """
 
-import base64
 import json
 import os
 import random
@@ -95,9 +94,10 @@ def load_prompts_config():
     return overrides
 
 
-def image_to_data_url(bytes_data: bytes, mimetype: str = "image/png") -> str:
-    b64 = base64.b64encode(bytes_data).decode("ascii")
-    return f"data:{mimetype};base64,{b64}"
+def upload_image_to_wix(bytes_data: bytes, filename: str, mimetype: str = "image/png") -> str:
+    """Upload image to Wix Media Manager and return the public URL."""
+    from wix_media_upload import upload_image
+    return upload_image(bytes_data, filename, mimetype)
 
 
 from shared_ui import THUMB_HEIGHT_PX  # noqa: E402 (used in results table)
@@ -230,7 +230,9 @@ def main():
     if "run_process" not in st.session_state:
         st.session_state.run_process = None
     if "uploaded_image_urls" not in st.session_state:
-        st.session_state.uploaded_image_urls = []  # list of data URLs or paths
+        st.session_state.uploaded_image_urls = []  # list of wixstatic.com URLs
+    if "uploaded_image_names" not in st.session_state:
+        st.session_state.uploaded_image_names = set()
     if "show_image_ref_section" not in st.session_state:
         st.session_state.show_image_ref_section = False
     if "show_prompt_ids_section" not in st.session_state:
@@ -348,6 +350,7 @@ def main():
         st.session_state.show_image_ref_section = show_image_ref
         if not show_image_ref:
             st.session_state.uploaded_image_urls = []
+            st.session_state.uploaded_image_names = set()
             st.session_state.pop("img_ref", None)
             for k in list(st.session_state.keys()):
                 if k.startswith("bb_upload_") or k.startswith("bb_select_") or k == "bb_random_one":
@@ -372,26 +375,34 @@ def main():
             uploaded = st.file_uploader("Upload reference images", type=["png", "jpg", "jpeg", "webp"], accept_multiple_files=True, key="upload")
             if uploaded:
                 for f in uploaded:
-                    data = f.read()
-                    data_url = image_to_data_url(data, f.type or "image/png")
-                    if data_url not in st.session_state.uploaded_image_urls:
-                        st.session_state.uploaded_image_urls.append(data_url)
+                    file_key = f"{f.name}_{f.size}"
+                    if file_key not in st.session_state.uploaded_image_names:
+                        data = f.read()
+                        mime = f.type or "image/png"
+                        try:
+                            with st.spinner(f"Uploading {f.name} to Wix Media..."):
+                                wix_url = upload_image_to_wix(data, f.name, mime)
+                            st.session_state.uploaded_image_urls.append(wix_url)
+                            st.session_state.uploaded_image_names.add(file_key)
+                        except Exception as e:
+                            st.error(f"Failed to upload {f.name}: {e}")
             if st.session_state.uploaded_image_urls:
                 effective_image_urls = list(st.session_state.uploaded_image_urls)
                 st.caption("Brand book for each image (or leave empty to use Copier for that run):")
                 brand_book_mode = st.radio("Brand book", ["Manual (enter per image)", "Copier"], horizontal=True, key="bb_upload")
                 if brand_book_mode == "Manual (enter per image)":
-                    for i, data_url in enumerate(effective_image_urls):
+                    for i, img_url in enumerate(effective_image_urls):
                         row = st.columns([1, 2])
                         with row[0]:
                             try:
-                                st.image(data_url, width="stretch")
+                                st.image(img_url, width="stretch")
                             except Exception:
                                 st.caption(f"Image {i + 1}")
                         with row[1]:
                             st.text_area(f"Brand book for image {i + 1}", height=80, key=f"bb_upload_{i}", placeholder="Paste brand book or leave empty for Copier")
             if st.button("Clear uploaded images", key="clear_upload"):
                 st.session_state.uploaded_image_urls = []
+                st.session_state.uploaded_image_names = set()
                 st.rerun()
 
         elif image_ref_override == "Random from pool":

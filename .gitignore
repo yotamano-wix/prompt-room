@@ -24,6 +24,7 @@ test_results/
 
 # Secrets (NEVER commit - contains app_id and secret_key)
 config.json
+wix_media_config.json
 
 # OS
 .DS_Store
