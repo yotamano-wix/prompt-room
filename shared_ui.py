@@ -143,8 +143,8 @@ def apply_custom_css():
     .caption {{ font-size: 0.8rem; color: #64748b !important; }}
     .hint {{ font-size: 0.8rem; color: #64748b !important; margin-top: 0.25rem; }}
     [data-testid="stDataFrame"] {{ color: #1e293b !important; }}
-    [data-testid="stImage"] img {{ height: {THUMB_HEIGHT_PX}px; width: 100%; object-fit: cover; object-position: top; border-radius: 6px; }}
-    [data-testid="stImage"] {{ margin-bottom: 4px; }}
+    .pool-thumbs [data-testid="stImage"] img {{ height: {THUMB_HEIGHT_PX}px; width: 100%; object-fit: cover; object-position: top; border-radius: 6px; }}
+    .pool-thumbs [data-testid="stImage"] {{ margin-bottom: 4px; }}
     hr {{ border: none; border-top: 1px solid #e2e8f0; margin: 1.5rem 0; }}
     [data-testid="stVerticalBlockBorderWrapper"] {{ margin-bottom: 0.35rem; }}
     </style>

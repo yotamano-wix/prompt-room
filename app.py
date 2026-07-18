@@ -104,7 +104,7 @@ from shared_ui import THUMB_HEIGHT_PX  # noqa: E402 (used in results table)
 
 
 def _results_table_from_dir(batch_dir: Path, key_prefix: str = "past") -> None:
-    """Render results table + Download CSV + report link for a given batch directory."""
+    """Render results with image previews + Download CSV + report link."""
     res_path = batch_dir / "results.json"
     csv_path = batch_dir / "results.csv"
     report_path = batch_dir / "report.html"
@@ -116,22 +116,94 @@ def _results_table_from_dir(batch_dir: Path, key_prefix: str = "past") -> None:
     if not results:
         st.caption("Results file is empty.")
         return
-    df = pd.DataFrame([{
-        "Run #": r.get("run_id"),
-        "User Request": (r.get("user_prompt") or "")[:200],
-        "Reference Image URL": (r.get("reference_image_url") or "")[:80],
-        "Publish URL": r.get("publish_url") or "",
-        "Editor URL": r.get("editor_url") or "",
-        "Screenshot": r.get("screenshot_path") or "",
-        "Brand Book Preview": (r.get("brand_book_preview") or "")[:300],
-        "Status": "error" if r.get("error") else "success",
-        "Error": r.get("error") or "",
-    } for r in results])
-    st.dataframe(df, width="stretch", hide_index=True)
-    if csv_path.exists():
-        st.download_button("Download CSV", data=csv_path.read_bytes(), file_name=csv_path.name, mime="text/csv", key=f"{key_prefix}_dl_csv")
-    if report_path.exists():
-        st.markdown(f"[Open HTML Report](file://{report_path.absolute()})")
+
+    st.markdown("""<style>
+    .result-card [data-testid="stImage"] img {
+        width: 100%; height: auto; max-height: 360px;
+        object-fit: cover; object-position: top; border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+    .result-card [data-testid="stImage"] { margin-bottom: 0; }
+    </style>""", unsafe_allow_html=True)
+
+    for i, r in enumerate(results):
+        is_error = bool(r.get("error"))
+        run_id = r.get("run_id", f"run_{i+1}")
+        status = "error" if is_error else "success"
+        badge_color = "#ef4444" if is_error else "#22c55e"
+        badge_label = "Error" if is_error else "Success"
+
+        st.markdown(f"""<div class="result-card" style="
+            border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+            padding: 20px; margin-bottom: 12px;
+        "><span style="
+            display: inline-block; background: {badge_color}; color: #fff;
+            font-size: 0.7rem; font-weight: 600; padding: 2px 10px;
+            border-radius: 999px; letter-spacing: 0.03em; margin-bottom: 8px;
+        ">{badge_label}</span>
+        <span style="font-weight: 600; font-size: 0.95rem; color: #0f172a; margin-left: 8px;">{run_id}</span>
+        </div>""", unsafe_allow_html=True)
+
+        col_left, col_right = st.columns([3, 2])
+
+        with col_left:
+            screenshot = r.get("screenshot_path") or ""
+            if screenshot:
+                screenshot_path = Path(screenshot)
+                if not screenshot_path.is_absolute():
+                    screenshot_path = Path.cwd() / screenshot_path
+                if screenshot_path.exists():
+                    try:
+                        st.image(str(screenshot_path), use_container_width=True)
+                    except Exception:
+                        st.caption("Screenshot unavailable")
+                else:
+                    st.caption("Screenshot not found")
+            else:
+                st.caption("No screenshot")
+
+            link_cols = st.columns(2)
+            publish_url = r.get("publish_url") or ""
+            editor_url = r.get("editor_url") or ""
+            with link_cols[0]:
+                if publish_url:
+                    st.markdown(f"🌐 [View published site]({publish_url})")
+            with link_cols[1]:
+                if editor_url:
+                    st.markdown(f"✏️ [Open editor]({editor_url})")
+
+        with col_right:
+            ref_url = r.get("reference_image_url") or ""
+            if ref_url:
+                st.caption("Reference image")
+                try:
+                    st.image(ref_url, use_container_width=True)
+                except Exception:
+                    st.caption(ref_url[:80])
+
+            prompt_text = (r.get("user_prompt") or "")[:300]
+            if prompt_text:
+                st.caption("Prompt")
+                st.markdown(f'<p style="font-size:0.82rem; color:#475569; line-height:1.5;">{prompt_text}</p>', unsafe_allow_html=True)
+
+            if is_error:
+                st.error(r["error"][:300], icon="⚠️")
+
+            bb = r.get("brand_book_preview") or ""
+            if bb:
+                with st.expander("Brand book"):
+                    st.text(bb[:500])
+
+        st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
+
+    # Downloads
+    dl_cols = st.columns(2)
+    with dl_cols[0]:
+        if csv_path.exists():
+            st.download_button("Download CSV", data=csv_path.read_bytes(), file_name=csv_path.name, mime="text/csv", key=f"{key_prefix}_dl_csv")
+    with dl_cols[1]:
+        if report_path.exists():
+            st.markdown(f"[Open HTML Report](file://{report_path.absolute()})")
 
 
 def _render_running_view():
@@ -412,16 +484,20 @@ def main():
                 effective_image_urls = list(images_pool)
                 n = len(images_pool)
                 cols = 6
-                for start in range(0, n, cols):
-                    row_cols = st.columns(cols)
-                    for i, col in enumerate(row_cols):
-                        idx = start + i
-                        if idx < n:
-                            with col:
-                                try:
-                                    st.image(images_pool[idx], width="stretch")
-                                except Exception:
-                                    st.caption(f"[{idx + 1}]")
+                pool_container = st.container()
+                pool_container.markdown('<div class="pool-thumbs">', unsafe_allow_html=True)
+                with pool_container:
+                    for start in range(0, n, cols):
+                        row_cols = st.columns(cols)
+                        for i, col in enumerate(row_cols):
+                            idx = start + i
+                            if idx < n:
+                                with col:
+                                    try:
+                                        st.image(images_pool[idx], width="stretch")
+                                    except Exception:
+                                        st.caption(f"[{idx + 1}]")
+                pool_container.markdown('</div>', unsafe_allow_html=True)
                 st.caption(f"Pool: {n} images (random per run).")
                 has_stored = any(images_pool_brand_books.get(u) for u in images_pool)
                 bb_options = ["Stored", "Manual (one for all runs)", "Copier"]
@@ -442,19 +518,23 @@ def main():
                 selected = []
                 n = len(images_pool)
                 cols = 6
-                for start in range(0, n, cols):
-                    row_cols = st.columns(cols)
-                    for i, col in enumerate(row_cols):
-                        idx = start + i
-                        if idx < n:
-                            with col:
-                                try:
-                                    st.image(images_pool[idx], width="stretch")
-                                    if st.checkbox("Use", key=f"pool_sel_{idx}"):
-                                        selected.append(idx)
-                                except Exception:
-                                    if st.checkbox("Use", key=f"pool_sel_{idx}"):
-                                        selected.append(idx)
+                sel_container = st.container()
+                sel_container.markdown('<div class="pool-thumbs">', unsafe_allow_html=True)
+                with sel_container:
+                    for start in range(0, n, cols):
+                        row_cols = st.columns(cols)
+                        for i, col in enumerate(row_cols):
+                            idx = start + i
+                            if idx < n:
+                                with col:
+                                    try:
+                                        st.image(images_pool[idx], width="stretch")
+                                        if st.checkbox("Use", key=f"pool_sel_{idx}"):
+                                            selected.append(idx)
+                                    except Exception:
+                                        if st.checkbox("Use", key=f"pool_sel_{idx}"):
+                                            selected.append(idx)
+                sel_container.markdown('</div>', unsafe_allow_html=True)
                 effective_image_urls = [images_pool[i] for i in selected] if selected else []
                 if effective_image_urls:
                     has_stored_select = any(images_pool_brand_books.get(u) for u in effective_image_urls)

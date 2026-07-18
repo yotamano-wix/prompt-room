@@ -280,7 +280,7 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
     if result_dir is None:
         RESULTS_DIR.mkdir(exist_ok=True)
     url = build_preview_url(reference_image_url=reference_image_url, site_data_overrides=site_data_overrides, prompt_overrides=prompt_overrides)
-    editor_url = url
+    editor_url = url  # will be updated after redirect to real editor
 
     print(f"\n🌐 Launching browser...")
 
@@ -418,6 +418,12 @@ def automate_preview(brand_book: str, reference_image_url: str, site_data_overri
             return
 
         page.wait_for_timeout(2000)
+
+        # Capture the real editor URL after redirect
+        current_url = page.url
+        if "editor.wix.com" in current_url or "editor" in current_url:
+            editor_url = current_url
+            print(f"   Editor URL: {editor_url[:100]}...")
 
         # ----- Step 6: Click Publish (top-right, then in popover) -----
         print("[6/7] Clicking Publish...")
